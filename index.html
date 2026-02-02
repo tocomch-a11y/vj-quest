@@ -2,18 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V22 - DIGITAL SPACE & HANDS</title>
+    <title>PSY-AR V23 - ULTRA STABLE</title>
     <style>
-        body { margin: 0; background: transparent; overflow: hidden; }
+        body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px 50px; font-size: 20px; background: #000; color: #fff; 
-            border: 2px solid #fff; border-radius: 40px; cursor: pointer; z-index: 1000;
+            padding: 30px 50px; font-size: 20px; background: #fff; color: #000; 
+            border: none; border-radius: 40px; cursor: pointer; z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYSTEM V22</button>
+    <button id="arBtn">START SYSTEM V23</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -22,23 +22,37 @@
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let patterns = [];
+        // 通信用データ（初期値を設定してフリーズ防止）
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         let handPos = new THREE.Vector3(), isHandTracking = false;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
+        // 1. PeerJS セットアップ（レンダリング開始前に接続準備）
         const peer = new Peer('quest-receiver');
-        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
+        peer.on('connection', c => {
+            c.on('data', d => {
+                // データの直接代入のみ（重い処理は入れない）
+                window.mD.low = d.low || 0;
+                window.mD.mid = d.mid || 0;
+                window.mD.high = d.high || 0;
+            });
+        });
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
+            call.on('stream', s => {
+                const audio = document.getElementById('audio');
+                audio.srcObject = s;
+                audio.play().catch(e => console.log("Audio play deferred"));
+            });
         });
 
+        // 数字描画用データ
         const numData = [
-            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
-            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1]
+            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],[0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
+            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
+            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1]
         ];
 
         function createNumber(idx) {
@@ -60,30 +74,26 @@
                 num.name = "numDisp";
                 group.add(num);
 
-                let geo, count = 15;
+                let geo, count = 12;
+                // パターン選別 (1, 3, 4, 7 維持)
                 if(i===1) { geo = new THREE.TorusKnotGeometry(0.35, 0.04, 64, 8); count = 4; }
-                else if(i===3) geo = new THREE.TorusGeometry(0.5, 0.005, 8, 30);
-                else if(i===4) geo = new THREE.CylinderGeometry(0.05, 0.2, 0.1, 8);
+                else if(i===3) { geo = new THREE.TorusGeometry(0.5, 0.005, 8, 30); count = 15; }
+                else if(i===4) { geo = new THREE.CylinderGeometry(0.05, 0.2, 0.1, 8); count = 12; }
                 else if(i===7) { geo = new THREE.BoxGeometry(0.001, 0.001, 1.2); count = 20; }
                 else {
-                    // デジタル空間表現 (0, 2, 5, 6)
-                    if(i===0) geo = new THREE.BoxGeometry(1.5, 0.002, 0.002); // 走査線（ホリゾンタル）
-                    else if(i===2) geo = new THREE.BoxGeometry(0.01, 0.01, 0.01); // パーティクル雲
-                    else if(i===5) geo = new THREE.BoxGeometry(0.002, 1.5, 0.002); // バーテックス・ライン
-                    else if(i===6) geo = new THREE.PlaneGeometry(0.05, 0.05); // デジタルグリフ
+                    // デジタル空間 (0, 2, 5, 6)
+                    if(i===0) geo = new THREE.BoxGeometry(1.5, 0.002, 0.002);
+                    else if(i===2) geo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+                    else if(i===5) geo = new THREE.BoxGeometry(0.002, 1.5, 0.002);
+                    else geo = new THREE.PlaneGeometry(0.05, 0.05);
+                    count = 20;
                 }
 
-                if(geo) {
-                    for(let j=0; j<count; j++) {
-                        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                        if(i === 3) m.position.z = -j * 0.7;
-                        else if(i === 7 || i === 2 || i === 0 || i === 5 || i === 6) {
-                            m.position.set((Math.random()-0.5)*1.8, (Math.random()-0.5)*1.8, (Math.random()-0.5)*1.8);
-                        } else {
-                            m.position.setFromSphericalCoords(0.8, Math.random()*Math.PI, Math.random()*Math.PI*2);
-                        }
-                        group.add(m);
-                    }
+                for(let j=0; j<count; j++) {
+                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
+                    if(i === 3) m.position.z = -j * 0.7;
+                    else m.position.set((Math.random()-0.5)*1.8, (Math.random()-0.5)*1.8, (Math.random()-0.5)*1.8);
+                    group.add(m);
                 }
                 group.visible = false;
                 patterns.push(group);
@@ -93,6 +103,10 @@
         }
 
         async function start() {
+            // 音声のアクティベート（重要：ボタンクリック直後に行う）
+            const audio = document.getElementById('audio');
+            audio.play().catch(() => {});
+
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor', 'hand-tracking'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
@@ -100,15 +114,17 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
+
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
+                
                 setup();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-            } catch (e) { console.error(e); }
+            } catch (e) { alert("XR Error: " + e.message); }
         }
 
         function render(time, frame) {
@@ -123,47 +139,47 @@
                 nextSwitch = Date.now() + 3500;
             }
 
-            // 【超広域スキャン】ハンドトラッキング
+            // ハンドトラッキング
             isHandTracking = false;
-            for (const source of frame.session.inputSources) {
-                if (source.hand) { 
-                    // どれか一つでも関節を拾えれば追従
-                    const joints = ['wrist', 'middle-finger-metacarpal', 'palm', 'index-finger-phalanx-proximal'];
-                    for(let jName of joints) {
-                        const joint = source.hand.get(jName);
-                        const pose = joint ? frame.getJointPose(joint, xrRefSpace) : null;
-                        if (pose && pose.transform.position.y > 0.3) {
-                            handPos.copy(pose.transform.position);
-                            isHandTracking = true;
-                            break;
-                        }
+            const sources = frame.session.inputSources;
+            for (let i = 0; i < sources.length; i++) {
+                const source = sources[i];
+                if (source.hand) {
+                    const wrist = source.hand.get('wrist');
+                    const pose = wrist ? frame.getJointPose(wrist, xrRefSpace) : null;
+                    if (pose && pose.transform.position.y > 0.3) {
+                        handPos.copy(pose.transform.position);
+                        isHandTracking = true;
+                        break;
                     }
                 }
-                if(isHandTracking) break;
             }
 
             _v.set(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(isHandTracking ? handPos : _v, 0.1);
 
-            patterns[currentIdx].children.forEach((p, i) => {
+            const activeOnes = patterns[currentIdx].children;
+            for(let i=0; i<activeOnes.length; i++) {
+                const p = activeOnes[i];
                 if (p.name === "numDisp") {
                     p.children.forEach(dot => dot.material.color.set(isHandTracking ? 0x00ff00 : 0xff0000));
                     p.lookAt(camera.position);
-                    return;
+                    continue;
                 }
                 
-                p.rotation.y += 0.01 + d.high * 1.0;
+                p.rotation.y += 0.01 + d.high;
                 const scaleSens = (currentIdx === 1) ? 0.04 : 0.35;
                 p.scale.setScalar(0.6 + d.low * scaleSens);
                 
-                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 0.8, 0.5);
+                _color.setHSL((hue + i/activeOnes.length)%1, 0.8, 0.5);
                 p.material.color.copy(_color);
 
-                if (currentIdx === 3) {
+                if (currentIdx === 3 && p.position.z !== undefined) {
                     p.position.z += 0.01 + d.low * 0.05;
                     if(p.position.z > 0.5) p.position.z = -4;
                 }
-            });
+            }
+
             renderer.render(scene, camera);
         }
         document.getElementById('arBtn').onclick = start;
