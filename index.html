@@ -2,18 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V15 - ULTIMATE STABLE</title>
+    <title>PSY-AR V16 - HYPER STABLE 8</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px 50px; font-size: 20px; background: #000; color: #fff; 
-            border: 1px solid #fff; border-radius: 40px; cursor: pointer; z-index: 1000;
+            padding: 30px 50px; font-size: 20px; background: #000; color: #0f0; 
+            border: 2px solid #0f0; border-radius: 40px; cursor: pointer; z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START STABLE AR</button>
+    <button id="arBtn">START SYSTEM</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -24,10 +24,9 @@
         let patternGroups = [];
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
         let nextAutoSwitch = 0, hue = 0, currentIdx = 0;
-        let lHandPos = new THREE.Vector3(), rHandPos = new THREE.Vector3();
-        let lActive = false, rActive = false;
+        let handPos = new THREE.Vector3(), handActive = false;
         
-        // メモリ節約用の再利用オブジェクト
+        // メモリ節約：オブジェクトの再利用
         const _color = new THREE.Color();
         const _v1 = new THREE.Vector3();
 
@@ -38,18 +37,17 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        function createInvader() {
+        function createInvader(offsetY) {
             const group = new THREE.Group();
             const data = [
                 [0,0,1,0,0,0,0,0,1,0,0],[0,0,0,1,0,0,0,1,0,0,0],[0,0,1,1,1,1,1,1,1,0,0],
-                [0,1,1,0,1,1,1,0,1,1,0],[1,1,1,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,1,0,1],
-                [1,0,1,0,0,0,0,0,1,0,1],[0,0,0,1,1,0,1,1,0,0,0]
+                [0,1,1,0,1,1,1,0,1,1,0],[1,1,1,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,1,0,1]
             ];
             data.forEach((row, y) => {
                 row.forEach((val, x) => {
                     if (val) {
                         const m = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({wireframe:true}));
-                        m.position.set(x*0.05 - 0.25, (7-y)*0.05 - 0.2, 0);
+                        m.position.set(x*0.05 - 0.25, (5-y)*0.05 + offsetY, 0);
                         group.add(m);
                     }
                 });
@@ -58,31 +56,29 @@
         }
 
         function setupPatterns() {
-            for(let mode=0; mode<20; mode++) {
+            for(let i=0; i<8; i++) {
                 const group = new THREE.Group();
-                if (mode < 10) { // Structure: 視野全体に散らす
-                    const geos = [new THREE.IcosahedronGeometry(0.15,0), new THREE.TorusGeometry(0.2,0.05,8,12), new THREE.OctahedronGeometry(0.2), new THREE.TorusKnotGeometry(0.15,0.03,32,8)];
-                    const geo = geos[mode % geos.length];
-                    for(let i=0; i<15; i++) {
+                if (i < 2) { // 1-2. 構造物 (配置を変えた2パターン)
+                    const geo = i === 0 ? new THREE.IcosahedronGeometry(0.1, 0) : new THREE.TorusGeometry(0.1, 0.04, 8, 8);
+                    for(let j=0; j<12; j++) {
                         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true}));
-                        // 配置範囲を広げる(半径1.2m程度)
-                        const phi = Math.acos(-1 + (2 * i) / 15);
-                        const theta = Math.sqrt(15 * Math.PI) * phi;
-                        m.position.setFromSphericalCoords(0.8, phi, theta);
+                        const dist = i === 0 ? 0.7 : 1.2; // 1つ目は近め、2つ目は遠めに分散
+                        m.position.setFromSphericalCoords(dist, Math.random()*Math.PI, Math.random()*Math.PI*2);
                         group.add(m);
                     }
-                } else if (mode < 15) { // Warp
-                    for(let i=0; i<10; i++) {
-                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.01, 8, 24), new THREE.MeshBasicMaterial({wireframe:true}));
-                        m.position.z = -i * 0.6;
+                } else if (i < 4) { // 3-4. ワープ (回転と密度の違い)
+                    for(let j=0; j<8; j++) {
+                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.01, 8, 20), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.z = -j * (i === 2 ? 0.6 : 1.0);
                         group.add(m);
                     }
-                } else if (mode === 15) { // Invader
-                    group.add(createInvader());
-                } else { // Digital Space
-                    for(let i=0; i<20; i++) {
-                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 1.5), new THREE.MeshBasicMaterial({wireframe:true}));
-                        m.position.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
+                } else if (i < 6) { // 5-6. インベーダー (上下配置の違い)
+                    group.add(createInvader(i === 4 ? -0.1 : 0.2));
+                } else { // 7-8. デジタル空間 (グリッドとランダム線)
+                    const geo = i === 6 ? new THREE.BoxGeometry(0.002, 0.002, 2) : new THREE.SphereGeometry(0.01, 4, 4);
+                    for(let j=0; j<30; j++) {
+                        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.set((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
                         group.add(m);
                     }
                 }
@@ -96,7 +92,7 @@
         async function startAR() {
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor', 'hand-tracking'] });
-                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false }); // 軽量化のためAAオフ
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
@@ -119,47 +115,44 @@
 
             if (Date.now() > nextAutoSwitch) {
                 patternGroups[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 20;
+                currentIdx = (currentIdx + 1) % 8;
                 patternGroups[currentIdx].visible = true;
-                nextAutoSwitch = Date.now() + 4000; // 切り替え時間を少し伸ばして安定化
+                nextAutoSwitch = Date.now() + 3500;
             }
 
-            lActive = false; rActive = false;
+            // トラッキング：手首(wrist)を最優先で取得
+            handActive = false;
             for (const s of frame.session.inputSources) {
                 if (s.hand) {
-                    // 手首を狙うことで認識率を最大化
-                    const joint = s.hand.get('wrist') || s.hand.get('middle-finger-metacarpal');
-                    const pose = frame.getJointPose(joint, xrRefSpace);
-                    if (pose) {
-                        const p = pose.transform.position;
-                        if (p.y > 0.3) { // 30cm以上であれば手とみなす
-                            if (s.handedness === 'left') { lHandPos.set(p.x, p.y, p.z); lActive = true; }
-                            if (s.handedness === 'right') { rHandPos.set(p.x, p.y, p.z); rActive = true; }
-                        }
+                    const wrist = s.hand.get('wrist');
+                    const pose = frame.getJointPose(wrist, xrRefSpace);
+                    if (pose && pose.transform.position.y > 0.2) {
+                        handPos.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+                        handActive = true;
+                        break; 
                     }
                 }
             }
 
-            // オブジェクトの基準位置
+            // オブジェクト位置：手があれば手に、なければ正面
             _v1.set(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
-            if (lActive && rActive) _v1.lerp(lHandPos.clone().lerp(rHandPos, 0.5), 0.5);
-            else if (rActive) _v1.lerp(rHandPos, 0.5);
-            else if (lActive) _v1.lerp(lHandPos, 0.5);
-            mainGroup.position.lerp(_v1, 0.1);
+            mainGroup.position.lerp(handActive ? handPos : _v1, 0.1);
 
             const activeGroup = patternGroups[currentIdx];
             activeGroup.children.forEach((p, i) => {
-                // スケールをさらに抑制(25%)
-                p.scale.setScalar(0.4 + (d.low * 0.4));
+                // 音量反応：25%に抑制
+                const s = 0.5 + (d.low * 0.4);
+                p.scale.setScalar(s);
                 p.rotation.y += 0.01 + d.high * 1.5;
 
                 _color.setHSL((hue + i/activeGroup.children.length)%1, 0.8, 0.5);
                 p.material.color.copy(_color);
-                p.material.opacity = 0.4 + d.low * 0.4;
+                p.material.opacity = 0.3 + d.low * 0.4;
 
-                if (currentIdx >= 10 && currentIdx < 15) {
-                    p.position.z += 0.01 + d.low * 0.05;
-                    if (p.position.z > 0.5) p.position.z = -5;
+                // ワープ移動
+                if (currentIdx === 2 || currentIdx === 3) {
+                    p.position.z += 0.01 + d.low * 0.04;
+                    if (p.position.z > 0.5) p.position.z = -4;
                 }
             });
 
