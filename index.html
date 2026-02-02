@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V28 - ABSTRACT DIMENSION</title>
+    <title>PSY-AR V29 - FRACTAL DEPTHS</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START ABSTRACT SESSION</button>
+    <button id="arBtn">START FRACTAL SESSION</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -60,23 +60,23 @@
                 num.name = "ID_LABEL";
                 group.add(num);
 
-                let geo, count = 30;
+                let geo, count = 40;
                 switch(i) {
-                    case 0: geo = new THREE.TorusGeometry(0.5, 0.001, 2, 100); count = 50; break; // デジタル・スパイダーウェブ
-                    case 1: geo = new THREE.PlaneGeometry(1, 1, 1, 1); count = 20; break; // 空間を切り裂くモノリス
-                    case 2: geo = new THREE.RingGeometry(0.1, 1.2, 3); count = 15; break; // 視覚を奪う巨大な瞬き
-                    case 3: geo = new THREE.IcosahedronGeometry(0.4, 0); count = 12; break; // 浮遊する幾何学の結晶
-                    case 4: geo = new THREE.TorusKnotGeometry(0.5, 0.05, 32, 2); count = 6; break; // 低速で蠢くワーム
-                    case 5: geo = new THREE.SphereGeometry(0.5, 32, 2); count = 10; break; // 座標軸の籠（経緯線）
-                    case 6: geo = new THREE.BoxGeometry(0.1, 2, 0.1); count = 30; break; // 垂直に並ぶデジタル・ピラー
-                    case 7: geo = new THREE.DodecahedronGeometry(0.2, 1); count = 40; break; // 浮遊する胞子クラウド
-                    case 8: geo = new THREE.TorusGeometry(0.4, 0.1, 4, 4); count = 20; break; // 空間を埋めるテトラ・リング
-                    case 9: geo = new THREE.PlaneGeometry(0.01, 3); count = 60; break; // 空間を遮断する光の壁
+                    case 0: geo = new THREE.OctahedronGeometry(0.5, 2); count = 25; break; // デジタル・シード（種子）
+                    case 1: geo = new THREE.TorusKnotGeometry(0.4, 0.08, 6, 3); count = 12; break; // 幾何学フラクタル・ボーン
+                    case 2: geo = new THREE.CylinderGeometry(0.01, 0.01, 2, 8); count = 60; break; // 無限の針（ニードル）
+                    case 3: geo = new THREE.SphereGeometry(0.5, 4, 4); count = 40; break; // 浮遊する菱形コア
+                    case 4: geo = new THREE.PlaneGeometry(0.3, 0.3); count = 80; break; // デジタル・リーフ（葉）
+                    case 5: geo = new THREE.TorusGeometry(0.6, 0.02, 16, 3); count = 30; break; // 三角形の連鎖
+                    case 6: geo = new THREE.IcosahedronGeometry(1.2, 1); count = 5; break; // 空間を包むフラクタル・シェル
+                    case 7: geo = new THREE.BoxGeometry(0.02, 0.02, 0.02); count = 150; break; // デジタル・ダスト
+                    case 8: geo = new THREE.RingGeometry(0.3, 0.7, 4); count = 20; break; // 歪んだフレーム・スライス
+                    case 9: geo = new THREE.CapsuleGeometry(0.05, 0.5, 4, 8); count = 25; break; // フローティング・カプセル
                 }
 
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
-                    m.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*3, (Math.random()-0.5)*3);
+                    m.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
                     m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
                     group.add(m);
                 }
@@ -110,7 +110,7 @@
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
-            hue += 0.003;
+            hue += 0.006;
 
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
@@ -119,26 +119,29 @@
                 nextSwitch = Date.now() + 6000;
             }
 
-            _v.set(0, 0, -1.4).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(_v, 0.1);
+            _v.set(0, 0, -1.6).applyQuaternion(camera.quaternion).add(camera.position);
+            mainGroup.position.lerp(_v, 0.07);
 
             patterns[currentIdx].children.forEach((p, i) => {
                 if (p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
                 
-                p.rotation.y += 0.008 + d.high * 0.5;
-                p.rotation.x += 0.004 + d.mid * 0.3;
+                p.rotation.y += 0.01 + d.high;
+                p.rotation.z += 0.005 + d.mid;
                 
-                // トリップ演出：低域での急激なパンプ
-                const s = 0.5 + d.low * 1.8;
+                const s = 0.6 + d.low * 2.5;
                 p.scale.setScalar(s);
 
-                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 0.9, 0.6);
+                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 1, 0.5);
                 p.material.color.copy(_color);
                 p.material.opacity = 0.2 + d.low * 0.8;
 
-                // 9番：光の壁の横移動
-                if(currentIdx === 9) {
-                    p.position.x += Math.sin(time/500 + i) * 0.01;
+                // 2番: 針のランダム振動
+                if(currentIdx === 2) {
+                    p.position.y += Math.sin(time/200 + i) * 0.02 * d.low;
+                }
+                // 7番: ダストの浮遊アニメーション
+                if(currentIdx === 7) {
+                    p.position.addScaledVector(_v.set(Math.sin(i), Math.cos(i), Math.sin(time/1000)), 0.005 * d.mid);
                 }
             });
             renderer.render(scene, camera);
