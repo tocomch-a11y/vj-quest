@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V24 - NEW EXPRESSIONS</title>
+    <title>PSY-AR V25 - 10 NEW SPACES</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START NEW VISUALS</button>
+    <button id="arBtn">START 10 NEW SPACES</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -22,218 +22,145 @@
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let patterns = [];
-        window.mD = { low: 0, mid: 0, high: 0 }; // Audio volume data
+        window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
-        const _v = new THREE.Vector3(), _color = new THREE.Color(); // Reusable Three.js objects for efficiency
+        const _v = new THREE.Vector3(), _color = new THREE.Color();
 
-        // PeerJS setup (prepared before rendering starts, as before)
+        // --- PeerJS & Audio ---
         const peer = new Peer('quest-receiver');
-        peer.on('connection', c => {
-            c.on('data', d => {
-                // Direct assignment only (no heavy processing here)
-                window.mD.low = d.low || 0;
-                window.mD.mid = d.mid || 0;
-                window.mD.high = d.high || 0;
-            });
-        });
+        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => {
                 const audio = document.getElementById('audio');
                 audio.srcObject = s;
-                audio.play().catch(e => console.log("Audio play deferred")); // Catch to prevent unhandled promise rejection
+                audio.play().catch(() => {});
             });
         });
 
-        function setupPatterns() {
-            for(let i=0; i<10; i++) { // 10 new patterns
-                const group = new THREE.Group();
-                let geo, count = 20; // Default count for particles
+        // --- 数字表示用データ (0-9) ---
+        const numData = [
+            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
+            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
+            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
+            [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]
+        ];
 
-                switch(i) {
-                    case 0: // Aurora-like light bands
-                        geo = new THREE.PlaneGeometry(0.02, 1.5);
-                        count = 30;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, side: THREE.DoubleSide }));
-                            m.position.set((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
-                            m.rotation.x = Math.random() * Math.PI;
-                            m.rotation.y = Math.random() * Math.PI;
-                            group.add(m);
-                        }
-                        break;
-                    case 1: // Data grid distortion
-                        geo = new THREE.PlaneGeometry(0.1, 0.1, 2, 2); // Larger segments for distortion effect
-                        count = 50;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
-                            group.add(m);
-                        }
-                        break;
-                    case 2: // Particle stream in space
-                        geo = new THREE.SphereGeometry(0.01, 4, 2); // Low-poly spheres for particles
-                        count = 100;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*3, (Math.random()-0.5)*3);
-                            group.add(m);
-                        }
-                        break;
-                    case 3: // Infinite polygonal tunnel
-                        geo = new THREE.RingGeometry(0.3, 0.35, 6, 1); // Hexagonal rings
-                        count = 15;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, side: THREE.DoubleSide }));
-                            m.position.z = -j * 0.8; // Arranged along Z-axis for tunnel effect
-                            group.add(m);
-                        }
-                        break;
-                    case 4: // Rotating and splitting cyber cubes
-                        geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-                        count = 8;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            _v.setFromSphericalCoords(0.8, Math.random()*Math.PI, Math.random()*Math.PI*2); // Distribute in a sphere
-                            m.position.copy(_v);
-                            group.add(m);
-                        }
-                        break;
-                    case 5: // Digital rain of light
-                        geo = new THREE.BoxGeometry(0.01, 0.3, 0.01); // Thin vertical lines
-                        count = 50;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.set((Math.random()-0.5)*2, Math.random()*3, (Math.random()-0.5)*2); // Start high, random X/Z
-                            group.add(m);
-                        }
-                        break;
-                    case 6: // Projection-mapped floating shapes
-                        geo = new THREE.DodecahedronGeometry(0.3); // Complex polyhedra
-                        count = 3; // Fewer, larger shapes
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.setFromSphericalCoords(0.7 + j*0.2, Math.random()*Math.PI, Math.random()*Math.PI*2);
-                            group.add(m);
-                        }
-                        break;
-                    case 7: // Wireframe waves vibrating with sound
-                        geo = new THREE.TorusGeometry(0.3, 0.01, 4, 32); // Flat rings
-                        count = 20;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.set(0, 0, -j * 0.3); // Stacked along Z-axis
-                            m.rotation.x = Math.PI / 2; // Orient horizontally
-                            group.add(m);
-                        }
-                        break;
-                    case 8: // Pixel-art like giant sphere expansion
-                        geo = new THREE.BoxGeometry(0.08, 0.08, 0.08); // Cubes acting as pixels
-                        count = 50;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            _v.setFromSphericalCoords(1.2, Math.random()*Math.PI, Math.random()*Math.PI*2); // Form a sphere
-                            m.position.copy(_v);
-                            group.add(m);
-                        }
-                        break;
-                    case 9: // Laser grid piercing space
-                        geo = new THREE.BoxGeometry(2.0, 0.005, 0.005); // Long, thin lines
-                        count = 10;
-                        for(let j=0; j<count; j++) {
-                            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                            m.position.set((Math.random()-0.5)*1, (Math.random()-0.5)*1, (Math.random()-0.5)*1);
-                            m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI); // Random orientation
-                            group.add(m);
-                        }
-                        break;
+        function createNumber(idx) {
+            const group = new THREE.Group();
+            numData[idx].forEach((val, i) => {
+                if(val) {
+                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.02), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                    m.position.set((i%3)*0.03 - 0.03, Math.floor(i/3)*-0.03 + 0.06, 0);
+                    group.add(m);
                 }
-                group.visible = false; // Hide all patterns initially
+            });
+            return group;
+        }
+
+        // --- パターン生成 ---
+        function setup() {
+            for(let i=0; i<10; i++) {
+                const group = new THREE.Group();
+                const num = createNumber(i);
+                num.name = "ID_LABEL";
+                group.add(num);
+
+                let geo, count = 40;
+                switch(i) {
+                    case 0: geo = new THREE.IcosahedronGeometry(0.5, 1); break; // デジタル・マトリクス
+                    case 1: geo = new THREE.TorusGeometry(0.8, 0.01, 3, 100); break; // 巨大トライアングル・ゲート
+                    case 2: geo = new THREE.BoxGeometry(0.02, 0.02, 2.0); break; // 空間を貫く光の雨
+                    case 3: geo = new THREE.OctahedronGeometry(0.2, 0); break; // 浮遊する幾何学コア
+                    case 4: geo = new THREE.RingGeometry(0.5, 0.52, 32); break; // 音に脈動するショックウェーブ
+                    case 5: geo = new THREE.CylinderGeometry(0, 0.2, 0.5, 4); break; // デジタル・クリスタル・ピラミッド
+                    case 6: geo = new THREE.TorusKnotGeometry(0.4, 0.01, 100, 16); break; // 複雑なデータの縺れ
+                    case 7: geo = new THREE.PlaneGeometry(0.5, 0.01); break; // 走査線（ホリゾンタル・スキャン）
+                    case 8: geo = new THREE.SphereGeometry(0.1, 8, 8); break; // パーティクル・オーブ
+                    case 9: geo = new THREE.TorusGeometry(0.3, 0.2, 16, 100); break; // 空間の歪み（ドーナツ型ホログラム）
+                }
+
+                for(let j=0; j<count; j++) {
+                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
+                    if(i===2) m.position.set((Math.random()-0.5)*2, 1, (Math.random()-0.5)*2);
+                    else if(i===4 || i===1) { m.position.z = -j * 0.5; }
+                    else m.position.set((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
+                    group.add(m);
+                }
+                group.visible = false;
                 patterns.push(group);
                 mainGroup.add(group);
             }
-            if (patterns.length > 0) patterns[0].visible = true; // Show the first pattern
+            patterns[0].visible = true;
         }
 
-        async function startARSession() {
-            // Activate audio (important: must happen on user interaction)
+        async function start() {
             const audio = document.getElementById('audio');
-            audio.play().catch(() => {}); // Attempt to play, catch if browser policy defers it
-
+            audio.play().catch(() => {});
             try {
-                // Request AR session WITHOUT 'hand-tracking' feature
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
-                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true }); // Antialias off for performance
+                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
-                document.getElementById('arBtn').style.display = 'none'; // Hide button after session starts
+                document.getElementById('arBtn').style.display = 'none';
 
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                mainGroup = new THREE.Group(); // Group to hold all patterns and move them together
+                mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 
-                setupPatterns(); // Setup all 10 patterns
-                xrRefSpace = await session.requestReferenceSpace('local'); // Establish reference space
+                setup();
+                xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
-                renderer.setAnimationLoop(render); // Start the rendering loop
-            } catch (e) { 
-                alert("XR Error: " + e.message); // Alert user if AR session fails
-            }
+                renderer.setAnimationLoop(render);
+            } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
-            // Ensure xrRefSpace and frame are valid before proceeding
             if (!xrRefSpace || !frame) return;
+            const d = window.mD;
+            hue += 0.002;
 
-            const d = window.mD; // Audio data
-            hue += 0.001; // Slow color shift over time
-
-            // Pattern switching logic
             if (Date.now() > nextSwitch) {
-                if(patterns[currentIdx]) patterns[currentIdx].visible = false; // Hide current pattern
-                currentIdx = (currentIdx + 1) % patterns.length; // Move to next pattern
-                if(patterns[currentIdx]) patterns[currentIdx].visible = true; // Show new pattern
-                nextSwitch = Date.now() + 4000; // Switch every 4 seconds
+                patterns[currentIdx].visible = false;
+                currentIdx = (currentIdx + 1) % 10;
+                patterns[currentIdx].visible = true;
+                nextSwitch = Date.now() + 5000; // 5秒ごとに切り替え
             }
 
-            // Object position fixed to camera's front (hand tracking is disabled)
-            _v.set(0, 0, -1.0).applyQuaternion(camera.quaternion).add(camera.position); // Target slightly in front of the camera
-            mainGroup.position.lerp(_v, 0.1); // Smoothly move the main group to the target
+            // カメラの正面に追従
+            _v.set(0, 0, -1.2).applyQuaternion(camera.quaternion).add(camera.position);
+            mainGroup.position.lerp(_v, 0.1);
 
-            // Animate elements within the active pattern
-            const activeGroup = patterns[currentIdx];
-            if (activeGroup) { // Check if activeGroup exists
-                activeGroup.children.forEach((p, i) => {
-                    p.rotation.y += 0.005 + d.mid * 0.5; // Rotate with mid-range audio
-                    p.rotation.x += 0.003 + d.high * 0.3; // Rotate with high-range audio
+            patterns[currentIdx].children.forEach((p, i) => {
+                if (p.name === "ID_LABEL") {
+                    p.lookAt(camera.position); // 数字は常にこちらを向く
+                    return;
+                }
+                
+                // --- 全パターン共通のアニメーション ---
+                p.rotation.y += 0.01 + d.high;
+                p.scale.setScalar(0.8 + d.low * 0.4);
+                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 0.8, 0.5);
+                p.material.color.copy(_color);
+                p.material.opacity = 0.5 + d.mid;
 
-                    // Scale change based on low-range audio (very subtle)
-                    const baseScale = 0.8; // Base scale for elements
-                    const scaleEffect = d.low * 0.15; // Low audio sensitivity, making changes subtle
-                    p.scale.setScalar(baseScale + scaleEffect);
-                    
-                    // Color animation
-                    _color.setHSL((hue + i/activeGroup.children.length)%1, 0.9, 0.6); // Dynamic HSL color
-                    p.material.color.copy(_color);
-                    p.material.opacity = 0.8 + d.low * 0.2; // Slight opacity change with low audio
+                // --- 個別特殊演出 ---
+                if(currentIdx === 2) { // 落下する光
+                    p.position.y -= 0.05 + d.low * 0.1;
+                    if(p.position.y < -1) p.position.y = 1.5;
+                }
+                if(currentIdx === 4 || currentIdx === 1) { // 迫るゲート
+                    p.position.z += 0.02 + d.low * 0.05;
+                    if(p.position.z > 0.5) p.position.z = -5;
+                }
+            });
 
-                    // Individual pattern-specific animations
-                    if (currentIdx === 3) { // Tunnel effect
-                        p.position.z += 0.03 + d.low * 0.05; // Move rings forward
-                        if(p.position.z > 1.0) p.position.z = -10.0; // Reset position when far enough
-                    }
-                     if (currentIdx === 5) { // Digital rain effect
-                        p.position.y -= 0.05 + d.low * 0.1; // Rain down
-                        if(p.position.y < -1.5) p.position.y = 1.5; // Reset to top
-                    }
-                });
-            }
-
-            renderer.render(scene, camera); // Perform the render
+            renderer.render(scene, camera);
         }
-        document.getElementById('arBtn').onclick = startARSession; // Attach start function to button click
+        document.getElementById('arBtn').onclick = start;
     </script>
 </body>
 </html>
