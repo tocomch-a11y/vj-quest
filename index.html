@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V18 - DEBUG NUMBERS</title>
+    <title>PSY-AR V19 - HAND FIX & PATTERN UPDATE</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START STABLE AR</button>
+    <button id="arBtn">START SYSTEM V19</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -21,7 +21,7 @@
 
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup;
-        let patterns = [], numberGroup;
+        let patterns = [];
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         let handPos = new THREE.Vector3(), isHandTracking = false;
@@ -35,51 +35,58 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        // 数字をドットで描画する関数
         const numData = [
-            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], // 0
-            [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0], // 1
-            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], // 2
-            [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1], // 3
-            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], // 4
-            [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1], // 5
-            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], // 6
-            [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1], // 7
+            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
+            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
+            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1]
         ];
 
         function createNumber(idx) {
             const group = new THREE.Group();
-            const data = numData[idx];
-            for(let i=0; i<15; i++) {
-                if(data[i]) {
+            numData[idx].forEach((val, i) => {
+                if(val) {
                     const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial());
                     m.position.set((i%3)*0.02 - 0.02, Math.floor(i/3)*-0.02 + 0.04, 0);
                     group.add(m);
                 }
-            }
+            });
             return group;
         }
 
         function setup() {
             for(let i=0; i<8; i++) {
                 const group = new THREE.Group();
-                // 中心に数字を追加
                 const num = createNumber(i);
-                num.name = "numberDisplay";
+                num.name = "numDisp";
                 group.add(num);
 
-                // 各パターンの構築
-                const geo = (i<2) ? new THREE.IcosahedronGeometry(0.1, 0) : 
-                            (i<4) ? new THREE.TorusGeometry(0.4, 0.005, 8, 20) :
-                            (i<6) ? new THREE.BoxGeometry(0.03, 0.03, 0.03) : new THREE.BoxGeometry(0.001, 0.001, 0.8);
+                // パターン構築
+                let geo;
+                if(i === 3) geo = new THREE.TorusGeometry(0.4, 0.005, 8, 20); // 3番維持
+                else if(i === 7) geo = new THREE.BoxGeometry(0.001, 0.001, 0.8); // 7番維持
+                else {
+                    // 新パターン用
+                    const geos = [
+                        new THREE.SphereGeometry(0.1, 4, 2), // 0: 鋭い結晶
+                        new THREE.TorusKnotGeometry(0.1, 0.02, 32, 4), // 1: 複雑な結び目
+                        new THREE.ConeGeometry(0.1, 0.3, 3), // 2: 三角錐
+                        null, // 3番 (上)
+                        new THREE.CylinderGeometry(0.05, 0.2, 0.1, 8), // 4: パネル
+                        new THREE.RingGeometry(0.2, 0.25, 4), // 5: デジタル四角
+                        new THREE.DodecahedronGeometry(0.15) // 6: 多面体
+                    ];
+                    geo = geos[i];
+                }
 
-                const count = (i<4) ? 8 : 20;
-                for(let j=0; j<count; j++) {
-                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
-                    if(i < 2) m.position.setFromSphericalCoords(0.6, Math.random()*Math.PI, Math.random()*6);
-                    else if(i < 4) m.position.z = -j * 0.7;
-                    else m.position.set((Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5));
-                    group.add(m);
+                if(geo) {
+                    for(let j=0; j<15; j++) {
+                        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
+                        if(i === 3) m.position.z = -j * 0.7;
+                        else if(i === 7) m.position.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
+                        else m.position.setFromSphericalCoords(0.6 + Math.random()*0.4, Math.random()*Math.PI, Math.random()*Math.PI*2);
+                        group.add(m);
+                    }
                 }
                 group.visible = false;
                 patterns.push(group);
@@ -96,12 +103,10 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
-
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
-                
                 setup();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
@@ -121,51 +126,45 @@
                 nextSwitch = Date.now() + 3500;
             }
 
-            // 【超重要】ハンドトラッキングのみを抽出（コントローラーを完全無視）
+            // 【究極版】ハンドトラッキング取得
             isHandTracking = false;
-            const sources = frame.session.inputSources;
-            for (const input of sources) {
-                // handプロパティがないものはコントローラーなのでスキップ
-                if (!input.hand) continue; 
-
-                // 手首、または手の平のいずれか近い方を参照
-                const joint = input.hand.get('wrist') || input.hand.get('middle-finger-metacarpal');
-                const pose = frame.getJointPose(joint, xrRefSpace);
-                
-                if (pose && pose.transform.position.y > 0.2) {
-                    handPos.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-                    isHandTracking = true;
-                    break; 
+            for (const source of frame.session.inputSources) {
+                if (source.hand) {
+                    // 全関節をスキャンして最初に有効なものを取得（wristがダメでも他を拾う）
+                    const joints = ['wrist', 'middle-finger-metacarpal', 'palm'];
+                    for (const jName of joints) {
+                        const joint = source.hand.get(jName);
+                        if (joint) {
+                            const pose = frame.getJointPose(joint, xrRefSpace);
+                            if (pose) {
+                                handPos.copy(pose.transform.position);
+                                isHandTracking = true;
+                                break;
+                            }
+                        }
+                    }
                 }
+                if (isHandTracking) break;
             }
 
-            // 位置追従：手が見えていれば手、なければ正面
             _v.set(0, 0, -0.5).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(isHandTracking ? handPos : _v, 0.15);
 
-            const activeGroup = patterns[currentIdx];
-            activeGroup.children.forEach((p, i) => {
-                if (p.name === "numberDisplay") {
-                    // 中心数字：手があれば緑、なければ赤
-                    p.children.forEach(dot => {
-                        dot.material.color.set(isHandTracking ? 0x00ff00 : 0xff0000);
-                    });
-                    p.rotation.copy(camera.rotation); // 常にこちらを向く
+            patterns[currentIdx].children.forEach((p, i) => {
+                if (p.name === "numDisp") {
+                    p.children.forEach(dot => dot.material.color.set(isHandTracking ? 0x00ff00 : 0xff0000));
+                    p.lookAt(camera.position);
                     return;
                 }
-
                 p.rotation.y += 0.02 + d.high * 1.5;
-                p.scale.setScalar(0.5 + d.low * 0.3);
-                
-                _color.setHSL((hue + i/10)%1, 0.8, 0.5);
+                p.scale.setScalar(0.4 + d.low * 0.4);
+                _color.setHSL((hue + i/15)%1, 0.8, 0.5);
                 p.material.color.copy(_color);
-
-                if (currentIdx === 2 || currentIdx === 3) {
+                if (currentIdx === 3) {
                     p.position.z += 0.01 + d.low * 0.05;
                     if(p.position.z > 0.5) p.position.z = -4;
                 }
             });
-
             renderer.render(scene, camera);
         }
         document.getElementById('arBtn').onclick = start;
