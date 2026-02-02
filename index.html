@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V19 - HAND FIX & PATTERN UPDATE</title>
+    <title>PSY-AR V20 - PURE HAND ONLY</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYSTEM V19</button>
+    <button id="arBtn">START SYSTEM V20</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -25,7 +25,6 @@
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         let handPos = new THREE.Vector3(), isHandTracking = false;
-        
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
         const peer = new Peer('quest-receiver');
@@ -61,30 +60,32 @@
                 num.name = "numDisp";
                 group.add(num);
 
-                // パターン構築
                 let geo;
-                if(i === 3) geo = new THREE.TorusGeometry(0.4, 0.005, 8, 20); // 3番維持
-                else if(i === 7) geo = new THREE.BoxGeometry(0.001, 0.001, 0.8); // 7番維持
+                // パターン固定ロジック
+                if(i===1) geo = new THREE.TorusKnotGeometry(0.1, 0.02, 32, 4);
+                else if(i===3) geo = new THREE.TorusGeometry(0.4, 0.005, 8, 20);
+                else if(i===4) geo = new THREE.CylinderGeometry(0.05, 0.2, 0.1, 8);
+                else if(i===7) geo = new THREE.BoxGeometry(0.001, 0.001, 0.8);
                 else {
-                    // 新パターン用
+                    // 新規パターン (0, 2, 5, 6)
                     const geos = [
-                        new THREE.SphereGeometry(0.1, 4, 2), // 0: 鋭い結晶
-                        new THREE.TorusKnotGeometry(0.1, 0.02, 32, 4), // 1: 複雑な結び目
-                        new THREE.ConeGeometry(0.1, 0.3, 3), // 2: 三角錐
-                        null, // 3番 (上)
-                        new THREE.CylinderGeometry(0.05, 0.2, 0.1, 8), // 4: パネル
-                        new THREE.RingGeometry(0.2, 0.25, 4), // 5: デジタル四角
-                        new THREE.DodecahedronGeometry(0.15) // 6: 多面体
+                        new THREE.OctahedronGeometry(0.15, 0), // 0: 浮遊クリスタル
+                        null, 
+                        new THREE.TorusGeometry(0.1, 0.08, 3, 3), // 2: デルタチップ
+                        null, null,
+                        new THREE.SphereGeometry(0.15, 2, 2), // 5: ピラミッドコア
+                        new THREE.PlaneGeometry(0.2, 0.2) // 6: デジタルグリフ
                     ];
                     geo = geos[i];
                 }
 
                 if(geo) {
-                    for(let j=0; j<15; j++) {
+                    const count = (i===3 || i===7) ? 15 : 12;
+                    for(let j=0; j<count; j++) {
                         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true }));
                         if(i === 3) m.position.z = -j * 0.7;
-                        else if(i === 7) m.position.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
-                        else m.position.setFromSphericalCoords(0.6 + Math.random()*0.4, Math.random()*Math.PI, Math.random()*Math.PI*2);
+                        else if(i === 7) m.position.set((Math.random()-0.5)*1.2, (Math.random()-0.5)*1.2, (Math.random()-0.5)*1.2);
+                        else m.position.setFromSphericalCoords(0.7, Math.random()*Math.PI, Math.random()*Math.PI*2);
                         group.add(m);
                     }
                 }
@@ -126,27 +127,22 @@
                 nextSwitch = Date.now() + 3500;
             }
 
-            // 【究極版】ハンドトラッキング取得
+            // 【鉄壁】ハンドトラッキング・オンリー・フィルタ
             isHandTracking = false;
             for (const source of frame.session.inputSources) {
-                if (source.hand) {
-                    // 全関節をスキャンして最初に有効なものを取得（wristがダメでも他を拾う）
-                    const joints = ['wrist', 'middle-finger-metacarpal', 'palm'];
-                    for (const jName of joints) {
-                        const joint = source.hand.get(jName);
-                        if (joint) {
-                            const pose = frame.getJointPose(joint, xrRefSpace);
-                            if (pose) {
-                                handPos.copy(pose.transform.position);
-                                isHandTracking = true;
-                                break;
-                            }
-                        }
+                // ここが重要：handプロパティが欠落している（コントローラー）は座標を見ることすらしない
+                if (source.hand) { 
+                    const wrist = source.hand.get('wrist');
+                    const pose = wrist ? frame.getJointPose(wrist, xrRefSpace) : null;
+                    if (pose) {
+                        handPos.copy(pose.transform.position);
+                        isHandTracking = true;
+                        break; 
                     }
                 }
-                if (isHandTracking) break;
             }
 
+            // 手がいなければカメラ正面、あれば手に追従
             _v.set(0, 0, -0.5).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(isHandTracking ? handPos : _v, 0.15);
 
