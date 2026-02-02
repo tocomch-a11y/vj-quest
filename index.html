@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>QUEST AR</title>
+<style>
+    body { margin: 0; overflow: hidden; }
+    #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; background: #00ff00; z-index: 100; border-radius: 15px; }
+</style>
+</head>
+<body>
+    <button id="arBtn">START AR EXPERIENCE</button>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+    <script>
+        let scene, camera, renderer, mesh, geometries = [];
+        window.mD = { low: 0, mid: 0, high: 0, trigger: false };
+
+        function initGeos() {
+            for(let i=0; i<12; i++) {
+                geometries.push(new THREE.TorusKnotGeometry(0.2, 0.05, 100, 16, i+1, i+2));
+            }
+        }
+
+        async function startAR() {
+            // 1. PeerJSを先に待機させる
+            initPeer();
+
+            // 2. WebXRセッションの要求（必須機能は最小限に）
+            const sessionInit = {
+                optionalFeatures: ['local-floor', 'hand-tracking'] 
+            };
+
+            try {
+                const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
+                
+                // 3. Rendererの設定
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.xr.enabled = true;
+
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+                
+                initGeos();
+                mesh = new THREE.Mesh(geometries[0], new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 }));
+                mesh.position.set(0, 0, -0.5); // 目の前に配置
+                scene.add(mesh);
+
+                // 4. セッションの確立
+                await renderer.xr.setSession(session);
+                document.getElementById('arBtn').style.display = 'none';
+
+                // 5. ループ開始
+                renderer.setAnimationLoop(render);
+
+            } catch (e) {
+                alert("AR Start Failed: " + e.message);
+                console.error(e);
+            }
+        }
+
+        function initPeer() {
+            const peer = new Peer('quest-vj-receiver');
+            peer.on('connection', c => {
+                c.on('data', d => { window.mD = d; });
+            });
+        }
+
+        let hue = 0, lastSwitch = 0;
+        function render() {
+            const d = window.mD;
+            hue += 0.002;
+
+            if (d.trigger && (Date.now() - lastSwitch > 400)) {
+                mesh.geometry = geometries[Math.floor(Math.random() * 12)];
+                lastSwitch = Date.now();
+            }
+
+            // 回転とスケーリングを音に同期
+            mesh.rotation.y += 0.01 + d.high * 0.1;
+            mesh.rotation.x += d.mid * 0.05;
+            const s = 0.5 + d.low * 2.5;
+            mesh.scale.lerp(new THREE.Vector3(s, s, s), 0.2);
+            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5);
+
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('arBtn').onclick = startAR;
+    </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "vj-project",
+  "version": "1.0.0",
+  "description": "WebXR Audio Visualizer — HTTPS server for Quest 3",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "selfsigned": "^2.4.1"
+  }
+}

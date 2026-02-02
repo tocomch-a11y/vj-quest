@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>MAC SENDER</title></head>
+<body>
+    <h2>MAC SENDER (Audio: BlackHole)</h2>
+    <button id="start" style="padding:20px;">1. START ANALYSIS</button>
+    <div id="status">Status: Waiting</div>
+    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+    <script>
+        const btn = document.getElementById('start');
+        const status = document.getElementById('status');
+        let peer, conn;
+
+        btn.onclick = async () => {
+            // BlackHoleを選択するためにマイク入力を取得
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            peer = new Peer('mac-vj-sender-' + Math.floor(Math.random()*1000));
+            
+            peer.on('open', (id) => {
+                status.innerText = "Your ID: " + id + " | Connecting to 'quest-vj-receiver'...";
+                conn = peer.connect('quest-vj-receiver');
+                setupAudio(stream);
+            });
+
+            peer.on('error', err => status.innerText = "Peer Error: " + err.type);
+        };
+
+        function setupAudio(stream) {
+            const ctx = new AudioContext();
+            const src = ctx.createMediaStreamSource(stream);
+            const ana = ctx.createAnalyser();
+            ana.fftSize = 512; // 解像度を少し上げる
+            ana.smoothingTimeConstant = 0.7; 
+            src.connect(ana);
+            const data = new Uint8Array(ana.frequencyBinCount);
+
+            function sendData() {
+                ana.getByteFrequencyData(data);
+                // 周波数帯域の計算
+                const low = data.slice(0, 10).reduce((a, b) => a + b) / 2550;
+                const mid = data.slice(10, 50).reduce((a, b) => a + b) / 10200;
+                const high = data.slice(50, 150).reduce((a, b) => a + b) / 25500;
+                
+                if (conn && conn.open) {
+                    conn.send({ low, mid, high, trigger: low > 0.85 });
+                }
+                requestAnimationFrame(sendData);
+            }
+            sendData();
+            status.innerText = "Transmitting to Quest...";
+        }
+    </script>
+</body>
+</html>
