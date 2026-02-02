@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V25 - 10 NEW SPACES</title>
+    <title>PSY-AR V26 - TRIP SPACES</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START 10 NEW SPACES</button>
+    <button id="arBtn">START TRIP SESSION</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -26,19 +26,13 @@
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
-        // --- PeerJS & Audio ---
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => {
-                const audio = document.getElementById('audio');
-                audio.srcObject = s;
-                audio.play().catch(() => {});
-            });
+            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        // --- 数字表示用データ (0-9) ---
         const numData = [
             [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
             [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
@@ -51,15 +45,14 @@
             const group = new THREE.Group();
             numData[idx].forEach((val, i) => {
                 if(val) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.02), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set((i%3)*0.03 - 0.03, Math.floor(i/3)*-0.03 + 0.06, 0);
+                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                    m.position.set((i%3)*0.02 - 0.02, Math.floor(i/3)*-0.02 + 0.04, 0);
                     group.add(m);
                 }
             });
             return group;
         }
 
-        // --- パターン生成 ---
         function setup() {
             for(let i=0; i<10; i++) {
                 const group = new THREE.Group();
@@ -67,25 +60,25 @@
                 num.name = "ID_LABEL";
                 group.add(num);
 
-                let geo, count = 40;
+                let geo, count = 30;
                 switch(i) {
-                    case 0: geo = new THREE.IcosahedronGeometry(0.5, 1); break; // デジタル・マトリクス
-                    case 1: geo = new THREE.TorusGeometry(0.8, 0.01, 3, 100); break; // 巨大トライアングル・ゲート
-                    case 2: geo = new THREE.BoxGeometry(0.02, 0.02, 2.0); break; // 空間を貫く光の雨
-                    case 3: geo = new THREE.OctahedronGeometry(0.2, 0); break; // 浮遊する幾何学コア
-                    case 4: geo = new THREE.RingGeometry(0.5, 0.52, 32); break; // 音に脈動するショックウェーブ
-                    case 5: geo = new THREE.CylinderGeometry(0, 0.2, 0.5, 4); break; // デジタル・クリスタル・ピラミッド
-                    case 6: geo = new THREE.TorusKnotGeometry(0.4, 0.01, 100, 16); break; // 複雑なデータの縺れ
-                    case 7: geo = new THREE.PlaneGeometry(0.5, 0.01); break; // 走査線（ホリゾンタル・スキャン）
-                    case 8: geo = new THREE.SphereGeometry(0.1, 8, 8); break; // パーティクル・オーブ
-                    case 9: geo = new THREE.TorusGeometry(0.3, 0.2, 16, 100); break; // 空間の歪み（ドーナツ型ホログラム）
+                    case 0: geo = new THREE.TorusGeometry(0.5, 0.2, 8, 50); count = 12; break; // 万華鏡トンネル
+                    case 1: geo = new THREE.SphereGeometry(0.5, 3, 2); count = 60; break; // 結晶フラグメント
+                    case 2: geo = new THREE.CylinderGeometry(0.01, 0.8, 0.1, 4); count = 40; break; // 逆ピラミッド・グリッド
+                    case 3: geo = new THREE.DodecahedronGeometry(0.6, 0); count = 8; break; // 巨大多面体核
+                    case 4: geo = new THREE.TorusKnotGeometry(0.3, 0.15, 128, 4); count = 5; break; // 螺旋のうねり
+                    case 5: geo = new THREE.BoxGeometry(1, 1, 1); count = 20; break; // 空間の断片（キューブ）
+                    case 6: geo = new THREE.TorusKnotGeometry(0.4, 0.01, 150, 20); count = 10; break; // 【継承】データの縺れ
+                    case 7: geo = new THREE.LatheGeometry([new THREE.Vector2(0, -0.5), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 0.5)], 20); count = 15; break; // 空間の歪み器
+                    case 8: geo = new THREE.BoxGeometry(0.005, 0.005, 3); count = 50; break; // 超高速ワープライン
+                    case 9: geo = new THREE.PlaneGeometry(2, 2, 10, 10); count = 5; break; // サイケデリック・グリッド膜
                 }
 
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
-                    if(i===2) m.position.set((Math.random()-0.5)*2, 1, (Math.random()-0.5)*2);
-                    else if(i===4 || i===1) { m.position.z = -j * 0.5; }
-                    else m.position.set((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
+                    if(i===0 || i===8) m.position.z = -j * 0.8;
+                    else m.position.set((Math.random()-0.5)*2.5, (Math.random()-0.5)*2.5, (Math.random()-0.5)*2.5);
+                    m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
                     group.add(m);
                 }
                 group.visible = false;
@@ -96,8 +89,7 @@
         }
 
         async function start() {
-            const audio = document.getElementById('audio');
-            audio.play().catch(() => {});
+            document.getElementById('audio').play().catch(() => {});
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
@@ -105,12 +97,10 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
-
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
-                
                 setup();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
@@ -121,43 +111,39 @@
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
-            hue += 0.002;
+            hue += 0.004;
 
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
                 currentIdx = (currentIdx + 1) % 10;
                 patterns[currentIdx].visible = true;
-                nextSwitch = Date.now() + 5000; // 5秒ごとに切り替え
+                nextSwitch = Date.now() + 6000; // 6秒でじっくり
             }
 
-            // カメラの正面に追従
             _v.set(0, 0, -1.2).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, i) => {
-                if (p.name === "ID_LABEL") {
-                    p.lookAt(camera.position); // 数字は常にこちらを向く
-                    return;
-                }
+                if (p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
                 
-                // --- 全パターン共通のアニメーション ---
-                p.rotation.y += 0.01 + d.high;
-                p.scale.setScalar(0.8 + d.low * 0.4);
-                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 0.8, 0.5);
-                p.material.color.copy(_color);
-                p.material.opacity = 0.5 + d.mid;
+                // --- トリップ用：ダイナミック・アニメーション ---
+                p.rotation.y += (0.01 + d.high * 0.8) * (i % 2 ? 1 : -1);
+                p.rotation.x += (0.005 + d.mid * 0.5);
+                
+                // 低域で脈動（トリップ感を出すために強めに設定）
+                const pulse = 0.5 + d.low * 1.5;
+                p.scale.setScalar(pulse);
 
-                // --- 個別特殊演出 ---
-                if(currentIdx === 2) { // 落下する光
-                    p.position.y -= 0.05 + d.low * 0.1;
-                    if(p.position.y < -1) p.position.y = 1.5;
-                }
-                if(currentIdx === 4 || currentIdx === 1) { // 迫るゲート
-                    p.position.z += 0.02 + d.low * 0.05;
-                    if(p.position.z > 0.5) p.position.z = -5;
+                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 1, 0.5);
+                p.material.color.copy(_color);
+                p.material.opacity = 0.4 + d.low * 0.6;
+
+                // 特殊移動
+                if(currentIdx === 0 || currentIdx === 8) { // トンネル・ワープ系
+                    p.position.z += 0.05 + d.low * 0.2;
+                    if(p.position.z > 1) p.position.z = -8;
                 }
             });
-
             renderer.render(scene, camera);
         }
         document.getElementById('arBtn').onclick = start;
