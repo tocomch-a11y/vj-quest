@@ -2,21 +2,21 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V30 - STABLE BOOT</title>
+    <title>PSY-AR V31 - FORCE AR</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px 50px; font-size: 20px; background: #fff; color: #000; 
-            border: none; border-radius: 40px; cursor: pointer; z-index: 1000;
-            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+            padding: 30px 60px; font-size: 24px; font-weight: bold;
+            background: #00ff00; color: #000; border: none; border-radius: 50px; 
+            cursor: pointer; z-index: 2000; box-shadow: 0 0 30px rgba(0,255,0,0.6);
         }
-        #status { position: fixed; bottom: 20px; width: 100%; text-align: center; color: #aaa; pointer-events: none; }
+        #status { position: fixed; bottom: 30px; width: 100%; text-align: center; z-index: 1000; font-family: monospace; }
     </style>
 </head>
 <body>
-    <button id="arBtn">FORCE START AR V30</button>
-    <div id="status">Ready to initialize...</div>
+    <button id="arBtn">ENTER AR MODE</button>
+    <div id="status">INITIALIZING...</div>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -30,38 +30,30 @@
         const _v = new THREE.Vector3(), _color = new THREE.Color();
         const statusEl = document.getElementById('status');
 
-        // --- HTTPS Check ---
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            statusEl.innerText = "ERROR: WebXR requires HTTPS";
-            statusEl.style.color = "red";
+        // --- 1. PeerJS 遅延セットアップ関数 ---
+        function initPeer() {
+            const peer = new Peer('quest-receiver');
+            peer.on('open', () => statusEl.innerText = "LINK READY");
+            peer.on('connection', c => { 
+                c.on('data', d => { window.mD = d; }); 
+            });
+            peer.on('call', call => {
+                call.answer(new MediaStream());
+                call.on('stream', s => { 
+                    document.getElementById('audio').srcObject = s;
+                });
+            });
         }
 
-        // --- PeerJS & Audio ---
-        const peer = new Peer('quest-receiver');
-        peer.on('open', () => statusEl.innerText = "Network Ready (ID: quest-receiver)");
-        peer.on('connection', c => { 
-            statusEl.innerText = "Data Connected";
-            c.on('data', d => { window.mD = d; }); 
-        });
-        peer.on('call', call => {
-            call.answer(new MediaStream());
-            call.on('stream', s => { 
-                const audio = document.getElementById('audio');
-                audio.srcObject = s;
-                audio.play().catch(() => {});
-            });
-        });
-
-        // --- Number Display ---
-        const numData = [
-            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
-            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
-            [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]
-        ];
-
+        // --- 2. 視覚パターン生成 ---
         function createNumber(idx) {
+            const numData = [
+                [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],[0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
+                [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+                [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
+                [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
+                [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]
+            ];
             const group = new THREE.Group();
             numData[idx].forEach((val, i) => {
                 if(val) {
@@ -73,7 +65,7 @@
             return group;
         }
 
-        function setup() {
+        function setupScene() {
             const geoms = [
                 new THREE.OctahedronGeometry(0.5, 2), new THREE.TorusKnotGeometry(0.4, 0.08, 6, 3),
                 new THREE.CylinderGeometry(0.01, 0.01, 2, 8), new THREE.SphereGeometry(0.5, 4, 4),
@@ -89,7 +81,6 @@
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
                     m.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
-                    m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
                     group.add(m);
                 }
                 group.visible = false;
@@ -99,30 +90,27 @@
             patterns[0].visible = true;
         }
 
-        async function start() {
-            statusEl.innerText = "Attempting to start WebXR...";
+        // --- 3. 強制AR起動エンジン ---
+        async function startAR() {
+            statusEl.innerText = "REQUESTING AR...";
             
-            // Audio Wakeup
-            const audio = document.getElementById('audio');
-            audio.play().catch(() => {});
+            // 音声アクティブ化
+            document.getElementById('audio').play().catch(() => {});
 
             if (!navigator.xr) {
-                alert("WebXR not supported on this browser.");
+                statusEl.innerText = "WEBXR NOT FOUND";
                 return;
             }
 
             try {
-                const isSupported = await navigator.xr.isSessionSupported('immersive-ar');
-                if (!isSupported) {
-                    alert("Immersive AR not supported.");
-                    return;
-                }
-
+                // セッションのリクエスト（最小限の構成で成功率を高める）
                 const session = await navigator.xr.requestSession('immersive-ar', {
-                    optionalFeatures: ['local-floor']
+                    requiredFeatures: ['local']
                 });
 
-                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
+                statusEl.innerText = "SESSION GRANTED";
+
+                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
@@ -133,16 +121,22 @@
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 
-                setup();
+                setupScene();
+                
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 
-                session.addEventListener('end', () => location.reload()); // 安全のために終了時はリロード
+                // ARが安定してから通信を開始
+                initPeer();
+                
                 renderer.setAnimationLoop(render);
-                statusEl.innerText = "AR Mode Active";
-            } catch (e) { 
-                statusEl.innerText = "XR Error: " + e.message;
+                statusEl.innerText = "AR ACTIVE";
+
+            } catch (e) {
+                statusEl.innerText = "START ERROR: " + e.message;
                 console.error(e);
+                // 失敗時は1秒後にリロードを促す
+                setTimeout(() => { if(confirm("AR起動に失敗しました。再読み込みしますか？")) location.reload(); }, 1000);
             }
         }
 
@@ -159,19 +153,21 @@
             }
 
             _v.set(0, 0, -1.6).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(_v, 0.07);
+            mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, i) => {
                 if (i === 0) { p.lookAt(camera.position); return; }
                 p.rotation.y += 0.01 + d.high;
-                p.scale.setScalar(0.6 + d.low * 2.5);
+                p.scale.setScalar(0.7 + d.low * 2.0);
                 _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 1, 0.5);
                 p.material.color.copy(_color);
                 p.material.opacity = 0.2 + d.low * 0.8;
             });
             renderer.render(scene, camera);
         }
-        document.getElementById('arBtn').onclick = start;
+
+        // ボタンにイベント登録
+        document.getElementById('arBtn').addEventListener('click', startAR);
     </script>
 </body>
 </html>
