@@ -1,87 +1,114 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>QUEST AR</title>
-<style>
-    body { margin: 0; overflow: hidden; }
-    #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; background: #00ff00; z-index: 100; border-radius: 15px; }
-</style>
+<head>
+    <meta charset="UTF-8">
+    <title>PSY-AR QUEST (FIXED AUDIO)</title>
+    <style>
+        body { margin: 0; background: transparent; overflow: hidden; font-family: sans-serif; }
+        #arBtn { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
+            padding: 40px 60px; font-size: 28px; background: #00ff00; color: #000; 
+            border: none; border-radius: 20px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 30px rgba(0,255,0,0.5);
+        }
+    </style>
 </head>
 <body>
-    <button id="arBtn">START AR EXPERIENCE</button>
+    <button id="arBtn">START AR & AUDIO</button>
+    <audio id="audio" autoplay playsinline></audio>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
-    <script>
-        let scene, camera, renderer, mesh, geometries = [];
-        window.mD = { low: 0, mid: 0, high: 0, trigger: false };
 
+    <script>
+        let scene, camera, renderer, mesh, xrRefSpace, geometries = [];
+        window.mD = { low: 0, mid: 0, high: 0, trigger: false };
+        let lastSwitch = 0, hue = 0;
+        const audioElem = document.getElementById('audio');
+
+        // 12種類の形状を準備
         function initGeos() {
+            geometries = [];
             for(let i=0; i<12; i++) {
-                geometries.push(new THREE.TorusKnotGeometry(0.2, 0.05, 100, 16, i+1, i+2));
+                // 音の低・中・高に合わせて複雑さが変わるように設定
+                geometries.push(new THREE.TorusKnotGeometry(0.3, 0.08, 100, 16, i + 1, i + 2));
             }
         }
 
         async function startAR() {
-            // 1. PeerJSを先に待機させる
-            initPeer();
-
-            // 2. WebXRセッションの要求（必須機能は最小限に）
-            const sessionInit = {
-                optionalFeatures: ['local-floor', 'hand-tracking'] 
-            };
+            // 【重要】ボタンを押した瞬間に音声を「再生可能状態」にする
+            audioElem.play().catch(e => console.log("Audio play pending..."));
 
             try {
-                const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
+                const session = await navigator.xr.requestSession('immersive-ar', {
+                    optionalFeatures: ['local-floor', 'hand-tracking']
+                });
                 
-                // 3. Rendererの設定
-                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+                renderer.xr.enabled = true;
                 renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.xr.enabled = true;
+                document.body.appendChild(renderer.domElement);
+                document.getElementById('arBtn').style.display = 'none';
 
                 scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 
                 initGeos();
                 mesh = new THREE.Mesh(geometries[0], new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 }));
-                mesh.position.set(0, 0, -0.5); // 目の前に配置
                 scene.add(mesh);
 
-                // 4. セッションの確立
+                xrRefSpace = await session.requestReferenceSpace('viewer');
                 await renderer.xr.setSession(session);
-                document.getElementById('arBtn').style.display = 'none';
-
-                // 5. ループ開始
+                
+                // 通信開始
+                initPeer();
                 renderer.setAnimationLoop(render);
 
             } catch (e) {
-                alert("AR Start Failed: " + e.message);
-                console.error(e);
+                alert("AR起動エラー: " + e.message);
             }
         }
 
         function initPeer() {
-            const peer = new Peer('quest-vj-receiver');
-            peer.on('connection', c => {
-                c.on('data', d => { window.mD = d; });
+            const peer = new Peer('quest-receiver');
+            
+            peer.on('connection', conn => {
+                conn.on('data', data => {
+                    window.mD = data; // Macからの数値（low, mid, high）を受け取る
+                });
+            });
+
+            peer.on('call', call => {
+                // Macからの音声ストリームに応答
+                call.answer(new MediaStream()); 
+                call.on('stream', remoteStream => {
+                    // 受信した音をaudio要素にセットして再生
+                    audioElem.srcObject = remoteStream;
+                    audioElem.play().catch(e => console.log("Audio resume failed"));
+                });
             });
         }
 
-        let hue = 0, lastSwitch = 0;
-        function render() {
+        function render(time, frame) {
+            if (!frame || !xrRefSpace) return;
             const d = window.mD;
-            hue += 0.002;
+            hue += 0.005;
 
-            if (d.trigger && (Date.now() - lastSwitch > 400)) {
+            // 低音トリガーで形状をランダムに変更
+            if (d.trigger && (Date.now() - lastSwitch > 300)) {
                 mesh.geometry = geometries[Math.floor(Math.random() * 12)];
                 lastSwitch = Date.now();
             }
 
-            // 回転とスケーリングを音に同期
-            mesh.rotation.y += 0.01 + d.high * 0.1;
-            mesh.rotation.x += d.mid * 0.05;
-            const s = 0.5 + d.low * 2.5;
-            mesh.scale.lerp(new THREE.Vector3(s, s, s), 0.2);
-            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5);
+            // 常に視線の先に配置
+            const gaze = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
+            mesh.position.lerp(gaze, 0.1);
+
+            // 音に反応する演出
+            mesh.rotation.y += 0.02 + (d.high * 0.8); // 高音で回転が速くなる
+            mesh.scale.setScalar(0.4 + (d.low * 5)); // 低音で巨大化
+            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5); // 中音で色が変化
 
             renderer.render(scene, camera);
         }
