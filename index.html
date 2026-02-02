@@ -2,19 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V14 - HYBRID 20</title>
+    <title>PSY-AR V15 - ULTIMATE STABLE</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 24px; background: #000; color: #0f0; 
-            border: 2px solid #0f0; border-radius: 60px; font-weight: bold; cursor: pointer;
-            z-index: 1000; box-shadow: 0 0 20px #0f0;
+            padding: 30px 50px; font-size: 20px; background: #000; color: #fff; 
+            border: 1px solid #fff; border-radius: 40px; cursor: pointer; z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">INITIALIZE AR VJ</button>
+    <button id="arBtn">START STABLE AR</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -27,6 +26,10 @@
         let nextAutoSwitch = 0, hue = 0, currentIdx = 0;
         let lHandPos = new THREE.Vector3(), rHandPos = new THREE.Vector3();
         let lActive = false, rActive = false;
+        
+        // メモリ節約用の再利用オブジェクト
+        const _color = new THREE.Color();
+        const _v1 = new THREE.Vector3();
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
@@ -38,14 +41,9 @@
         function createInvader() {
             const group = new THREE.Group();
             const data = [
-                [0,0,1,0,0,0,0,0,1,0,0],
-                [0,0,0,1,0,0,0,1,0,0,0],
-                [0,0,1,1,1,1,1,1,1,0,0],
-                [0,1,1,0,1,1,1,0,1,1,0],
-                [1,1,1,1,1,1,1,1,1,1,1],
-                [1,0,1,1,1,1,1,1,1,0,1],
-                [1,0,1,0,0,0,0,0,1,0,1],
-                [0,0,0,1,1,0,1,1,0,0,0]
+                [0,0,1,0,0,0,0,0,1,0,0],[0,0,0,1,0,0,0,1,0,0,0],[0,0,1,1,1,1,1,1,1,0,0],
+                [0,1,1,0,1,1,1,0,1,1,0],[1,1,1,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,1,0,1],
+                [1,0,1,0,0,0,0,0,1,0,1],[0,0,0,1,1,0,1,1,0,0,0]
             ];
             data.forEach((row, y) => {
                 row.forEach((val, x) => {
@@ -62,26 +60,29 @@
         function setupPatterns() {
             for(let mode=0; mode<20; mode++) {
                 const group = new THREE.Group();
-                if (mode < 10) { // Structure
-                    const geos = [new THREE.IcosahedronGeometry(0.3,0), new THREE.TorusGeometry(0.2,0.1,16,3), new THREE.OctahedronGeometry(0.3), new THREE.TorusKnotGeometry(0.2,0.05,64,8)];
+                if (mode < 10) { // Structure: 視野全体に散らす
+                    const geos = [new THREE.IcosahedronGeometry(0.15,0), new THREE.TorusGeometry(0.2,0.05,8,12), new THREE.OctahedronGeometry(0.2), new THREE.TorusKnotGeometry(0.15,0.03,32,8)];
                     const geo = geos[mode % geos.length];
-                    for(let i=0; i<12; i++) {
+                    for(let i=0; i<15; i++) {
                         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true}));
-                        m.position.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(0.4);
+                        // 配置範囲を広げる(半径1.2m程度)
+                        const phi = Math.acos(-1 + (2 * i) / 15);
+                        const theta = Math.sqrt(15 * Math.PI) * phi;
+                        m.position.setFromSphericalCoords(0.8, phi, theta);
                         group.add(m);
                     }
                 } else if (mode < 15) { // Warp
-                    for(let i=0; i<15; i++) {
-                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.01, 8, 32), new THREE.MeshBasicMaterial({wireframe:true}));
-                        m.position.z = -i * 0.4;
+                    for(let i=0; i<10; i++) {
+                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.01, 8, 24), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.z = -i * 0.6;
                         group.add(m);
                     }
                 } else if (mode === 15) { // Invader
                     group.add(createInvader());
                 } else { // Digital Space
-                    for(let i=0; i<30; i++) {
-                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 1), new THREE.MeshBasicMaterial({wireframe:true}));
-                        m.position.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5);
+                    for(let i=0; i<20; i++) {
+                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 1.5), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
                         group.add(m);
                     }
                 }
@@ -95,7 +96,7 @@
         async function startAR() {
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor', 'hand-tracking'] });
-                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false }); // 軽量化のためAAオフ
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
@@ -120,18 +121,18 @@
                 patternGroups[currentIdx].visible = false;
                 currentIdx = (currentIdx + 1) % 20;
                 patternGroups[currentIdx].visible = true;
-                nextAutoSwitch = Date.now() + 3000;
+                nextAutoSwitch = Date.now() + 4000; // 切り替え時間を少し伸ばして安定化
             }
 
             lActive = false; rActive = false;
-            for (let s of frame.session.inputSources) {
-                if (s.hand) { // s.handが無い場合はコントローラーなので無視
-                    const joint = s.hand.get('middle-finger-metacarpal');
+            for (const s of frame.session.inputSources) {
+                if (s.hand) {
+                    // 手首を狙うことで認識率を最大化
+                    const joint = s.hand.get('wrist') || s.hand.get('middle-finger-metacarpal');
                     const pose = frame.getJointPose(joint, xrRefSpace);
                     if (pose) {
                         const p = pose.transform.position;
-                        // 床(y < 0.2)にある入力を「コントローラー」とみなして無視
-                        if (p.y > 0.2) {
+                        if (p.y > 0.3) { // 30cm以上であれば手とみなす
                             if (s.handedness === 'left') { lHandPos.set(p.x, p.y, p.z); lActive = true; }
                             if (s.handedness === 'right') { rHandPos.set(p.x, p.y, p.z); rActive = true; }
                         }
@@ -139,26 +140,25 @@
                 }
             }
 
-            const headFront = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
-            let targetPos = headFront;
-            if (lActive && rActive) targetPos = lHandPos.clone().lerp(rHandPos, 0.5);
-            else if (rActive) targetPos = rHandPos;
-            else if (lActive) targetPos = lHandPos;
-            mainGroup.position.lerp(targetPos, 0.1);
+            // オブジェクトの基準位置
+            _v1.set(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
+            if (lActive && rActive) _v1.lerp(lHandPos.clone().lerp(rHandPos, 0.5), 0.5);
+            else if (rActive) _v1.lerp(rHandPos, 0.5);
+            else if (lActive) _v1.lerp(lHandPos, 0.5);
+            mainGroup.position.lerp(_v1, 0.1);
 
             const activeGroup = patternGroups[currentIdx];
             activeGroup.children.forEach((p, i) => {
-                // スケール変化を以前の25%に抑制
-                const sBase = 0.2 + (d.low * 0.6); // 2.5だった係数を0.6に
-                p.scale.setScalar(sBase);
-                
-                p.rotation.y += 0.01 + d.high * 2;
-                const color = new THREE.Color().setHSL((hue + i/activeGroup.children.length)%1, 1, 0.5);
-                p.material.color = color;
-                p.material.opacity = 0.4 + d.low * 0.6;
+                // スケールをさらに抑制(25%)
+                p.scale.setScalar(0.4 + (d.low * 0.4));
+                p.rotation.y += 0.01 + d.high * 1.5;
 
-                if (currentIdx >= 10 && currentIdx < 15) { // Warp Mode
-                    p.position.z += 0.02 + d.low * 0.1;
+                _color.setHSL((hue + i/activeGroup.children.length)%1, 0.8, 0.5);
+                p.material.color.copy(_color);
+                p.material.opacity = 0.4 + d.low * 0.4;
+
+                if (currentIdx >= 10 && currentIdx < 15) {
+                    p.position.z += 0.01 + d.low * 0.05;
                     if (p.position.z > 0.5) p.position.z = -5;
                 }
             });
