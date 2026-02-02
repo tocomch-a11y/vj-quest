@@ -2,19 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V13 - STABLE FIXED</title>
+    <title>PSY-AR V14 - HYBRID 20</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 28px; background: #fff; color: #000; 
-            border: none; border-radius: 60px; font-weight: bold; cursor: pointer;
-            z-index: 1000; box-shadow: 0 0 30px #fff;
+            padding: 40px 60px; font-size: 24px; background: #000; color: #0f0; 
+            border: 2px solid #0f0; border-radius: 60px; font-weight: bold; cursor: pointer;
+            z-index: 1000; box-shadow: 0 0 20px #0f0;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START STABLE SESSION</button>
+    <button id="arBtn">INITIALIZE AR VJ</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -35,49 +35,61 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        function setupPatterns() {
-            // エラーの出たCapsuleGeometryを、安定した別の形状（LatheやCylinder）に置き換え
-            const geometries = [
-                new THREE.BoxGeometry(0.2, 0.2, 0.2), 
-                new THREE.SphereGeometry(0.2, 8, 8),
-                new THREE.TorusGeometry(0.3, 0.05, 12, 24), 
-                new THREE.OctahedronGeometry(0.3),
-                new THREE.CylinderGeometry(0, 0.2, 0.5, 4), 
-                new THREE.IcosahedronGeometry(0.3, 0),
-                new THREE.TorusKnotGeometry(0.2, 0.06, 64, 8), 
-                new THREE.DodecahedronGeometry(0.3),
-                new THREE.TetrahedronGeometry(0.4), 
-                new THREE.RingGeometry(0.1, 0.4, 6),
-                new THREE.CylinderGeometry(0.1, 0.1, 0.4, 16), // Capsuleの代わり
-                new THREE.TorusGeometry(0.3, 0.1, 3, 3),
-                new THREE.BoxGeometry(0.02, 0.8, 0.02), 
-                new THREE.PlaneGeometry(0.4, 0.4),
-                new THREE.TorusKnotGeometry(0.2, 0.02, 100, 16, 3, 5), 
-                new THREE.ConeGeometry(0.2, 0.5, 4),
-                new THREE.TorusGeometry(0.4, 0.02, 4, 100), 
-                new THREE.BoxGeometry(0.4, 0.05, 0.4),
-                new THREE.OctahedronGeometry(0.4, 2), 
-                new THREE.TorusKnotGeometry(0.1, 0.08, 32, 4)
+        function createInvader() {
+            const group = new THREE.Group();
+            const data = [
+                [0,0,1,0,0,0,0,0,1,0,0],
+                [0,0,0,1,0,0,0,1,0,0,0],
+                [0,0,1,1,1,1,1,1,1,0,0],
+                [0,1,1,0,1,1,1,0,1,1,0],
+                [1,1,1,1,1,1,1,1,1,1,1],
+                [1,0,1,1,1,1,1,1,1,0,1],
+                [1,0,1,0,0,0,0,0,1,0,1],
+                [0,0,0,1,1,0,1,1,0,0,0]
             ];
+            data.forEach((row, y) => {
+                row.forEach((val, x) => {
+                    if (val) {
+                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.set(x*0.05 - 0.25, (7-y)*0.05 - 0.2, 0);
+                        group.add(m);
+                    }
+                });
+            });
+            return group;
+        }
 
-            geometries.forEach((geo, idx) => {
+        function setupPatterns() {
+            for(let mode=0; mode<20; mode++) {
                 const group = new THREE.Group();
-                for(let i=0; i<15; i++) {
-                    const mat = new THREE.MeshBasicMaterial({ 
-                        wireframe: true, 
-                        transparent: true, 
-                        blending: THREE.AdditiveBlending 
-                    });
-                    const m = new THREE.Mesh(geo, mat);
-                    m.position.set((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
-                    m.rotation.set(Math.random()*7, Math.random()*7, Math.random()*7);
-                    group.add(m);
+                if (mode < 10) { // Structure
+                    const geos = [new THREE.IcosahedronGeometry(0.3,0), new THREE.TorusGeometry(0.2,0.1,16,3), new THREE.OctahedronGeometry(0.3), new THREE.TorusKnotGeometry(0.2,0.05,64,8)];
+                    const geo = geos[mode % geos.length];
+                    for(let i=0; i<12; i++) {
+                        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true}));
+                        m.position.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(0.4);
+                        group.add(m);
+                    }
+                } else if (mode < 15) { // Warp
+                    for(let i=0; i<15; i++) {
+                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.01, 8, 32), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.z = -i * 0.4;
+                        group.add(m);
+                    }
+                } else if (mode === 15) { // Invader
+                    group.add(createInvader());
+                } else { // Digital Space
+                    for(let i=0; i<30; i++) {
+                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 1), new THREE.MeshBasicMaterial({wireframe:true}));
+                        m.position.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5);
+                        group.add(m);
+                    }
                 }
                 group.visible = false;
                 patternGroups.push(group);
                 mainGroup.add(group);
-            });
-            if(patternGroups.length > 0) patternGroups[0].visible = true;
+            }
+            patternGroups[0].visible = true;
         }
 
         async function startAR() {
@@ -88,12 +100,10 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
-
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
-                
                 setupPatterns();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
@@ -108,21 +118,23 @@
 
             if (Date.now() > nextAutoSwitch) {
                 patternGroups[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % patternGroups.length;
+                currentIdx = (currentIdx + 1) % 20;
                 patternGroups[currentIdx].visible = true;
-                nextAutoSwitch = Date.now() + 2500;
+                nextAutoSwitch = Date.now() + 3000;
             }
 
             lActive = false; rActive = false;
             for (let s of frame.session.inputSources) {
-                if (s.hand) {
-                    // 手の平の中心（metacarpal）を基準にするのが最も安定します
+                if (s.hand) { // s.handが無い場合はコントローラーなので無視
                     const joint = s.hand.get('middle-finger-metacarpal');
                     const pose = frame.getJointPose(joint, xrRefSpace);
                     if (pose) {
                         const p = pose.transform.position;
-                        if (s.handedness === 'left') { lHandPos.set(p.x, p.y, p.z); lActive = true; }
-                        if (s.handedness === 'right') { rHandPos.set(p.x, p.y, p.z); rActive = true; }
+                        // 床(y < 0.2)にある入力を「コントローラー」とみなして無視
+                        if (p.y > 0.2) {
+                            if (s.handedness === 'left') { lHandPos.set(p.x, p.y, p.z); lActive = true; }
+                            if (s.handedness === 'right') { rHandPos.set(p.x, p.y, p.z); rActive = true; }
+                        }
                     }
                 }
             }
@@ -132,25 +144,24 @@
             if (lActive && rActive) targetPos = lHandPos.clone().lerp(rHandPos, 0.5);
             else if (rActive) targetPos = rHandPos;
             else if (lActive) targetPos = lHandPos;
-            mainGroup.position.lerp(targetPos, 0.15);
+            mainGroup.position.lerp(targetPos, 0.1);
 
-            if (patternGroups[currentIdx]) {
-                patternGroups[currentIdx].children.forEach((p, i) => {
-                    p.rotation.y += 0.02 + d.high * 5;
-                    p.rotation.x += 0.01 + d.mid * 2;
-                    
-                    const color = new THREE.Color().setHSL((hue + i/15)%1, 1, 0.5);
-                    p.material.color = color;
-                    p.material.opacity = 0.3 + d.low * 0.7;
-                    p.scale.setScalar(0.2 + d.low * 2.0);
+            const activeGroup = patternGroups[currentIdx];
+            activeGroup.children.forEach((p, i) => {
+                // スケール変化を以前の25%に抑制
+                const sBase = 0.2 + (d.low * 0.6); // 2.5だった係数を0.6に
+                p.scale.setScalar(sBase);
+                
+                p.rotation.y += 0.01 + d.high * 2;
+                const color = new THREE.Color().setHSL((hue + i/activeGroup.children.length)%1, 1, 0.5);
+                p.material.color = color;
+                p.material.opacity = 0.4 + d.low * 0.6;
 
-                    // 両手の距離に応じて広がりを持たせる
-                    if (lActive && rActive) {
-                        const dist = lHandPos.distanceTo(rHandPos);
-                        p.position.setLength(0.05 + dist * 0.5);
-                    }
-                });
-            }
+                if (currentIdx >= 10 && currentIdx < 15) { // Warp Mode
+                    p.position.z += 0.02 + d.low * 0.1;
+                    if (p.position.z > 0.5) p.position.z = -5;
+                }
+            });
 
             renderer.render(scene, camera);
         }
