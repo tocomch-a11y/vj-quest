@@ -2,14 +2,16 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V36 - RESET & BOOT</title>
+    <title>PSY-AR V37 - DEPLOY FIX</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
-        #btn { padding: 40px; font-size: 24px; font-weight: bold; background: #0f0; border: none; border-radius: 20px; cursor: pointer; }
+        body { margin: 0; background: #000; color: #fff; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+        #btn { padding: 40px 60px; font-size: 28px; font-weight: bold; background: #00ff00; color: #000; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 0 30px #0f0; }
+        #status { margin-top: 20px; color: #0f0; font-family: monospace; font-size: 14px; }
     </style>
 </head>
 <body>
-    <button id="btn">FORCE RESET & START AR</button>
+    <button id="btn">LAUNCH PSY-AR</button>
+    <div id="status">GITHUB DEPLOY SUCCESSFUL</div>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -20,6 +22,7 @@
         let patterns = [];
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, hue = 0, nextSwitch = 0;
+        const statusEl = document.getElementById('status');
 
         function setup() {
             scene = new THREE.Scene();
@@ -29,10 +32,10 @@
 
             const geoms = [
                 new THREE.TorusKnotGeometry(0.5, 0.01, 150, 20),
-                new THREE.BoxGeometry(0.01, 0.01, 5),
-                new THREE.PlaneGeometry(2, 2, 12, 12),
+                new THREE.BoxGeometry(0.01, 0.01, 6),
+                new THREE.PlaneGeometry(2, 2, 10, 10),
                 new THREE.IcosahedronGeometry(0.5, 0),
-                new THREE.TorusGeometry(0.7, 0.1, 10, 40)
+                new THREE.TorusGeometry(0.8, 0.1, 12, 48)
             ];
 
             for(let i=0; i<5; i++) {
@@ -50,18 +53,18 @@
         }
 
         async function start() {
-            // 1. もし古いセッションがあれば終了を試みる（これが重要）
-            if (navigator.xr && xrSession) {
-                try { await xrSession.end(); } catch(e) {}
-            }
+            statusEl.innerText = "REQUESTING SESSION...";
+            
+            // 安全装置：5秒間ARが起動しなければ強制リロード
+            const timeout = setTimeout(() => {
+                alert("TIMEOUT: RELOADING TO CLEAR GHOST SESSION...");
+                location.reload();
+            }, 5000);
 
             try {
-                // 2. セッションリクエスト
-                xrSession = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['local']
-                });
+                xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['local'] });
+                clearTimeout(timeout); // 成功したらタイムアウト解除
 
-                // 3. 成功したら即座にレンダラー作成
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
                 await renderer.xr.setSession(xrSession);
@@ -69,8 +72,6 @@
                 document.getElementById('btn').style.display = 'none';
 
                 setup();
-                
-                // 4. ARが安定した後にネットワークと音を解禁
                 initNetwork();
 
                 renderer.setAnimationLoop((t, frame) => {
@@ -93,9 +94,10 @@
                     });
                     renderer.render(scene, camera);
                 });
-
             } catch (e) {
-                alert("Launch Error: " + e.message + "\nTry closing all tabs.");
+                clearTimeout(timeout);
+                statusEl.innerText = "ERROR: " + e.message;
+                if(e.message.includes("active")) location.reload();
             }
         }
 
