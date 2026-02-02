@@ -2,58 +2,51 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V32 - BOOT FIX</title>
+    <title>PSY-AR V33 - 5 SELECT</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        body { margin: 0; background: #000; color: #fff; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #arBtn { 
-            padding: 40px 80px; font-size: 28px; font-weight: bold;
-            background: #00ff00; color: #000; border: none; border-radius: 60px; 
-            cursor: pointer; box-shadow: 0 0 40px rgba(0,255,0,0.8);
-            transition: 0.2s;
+            padding: 30px 60px; font-size: 24px; font-weight: bold; background: #fff; color: #000; 
+            border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px #fff;
         }
-        #arBtn:active { transform: scale(0.95); opacity: 0.8; }
-        #msg { position: fixed; bottom: 40px; text-align: center; width: 100%; font-family: monospace; color: #0f0; }
     </style>
 </head>
 <body>
     <button id="arBtn">START AR</button>
-    <div id="msg">READY</div>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace, mainGroup;
+        let scene, camera, renderer, xrSession, mainGroup;
         let patterns = [];
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
-        const msg = document.getElementById('msg');
 
-        // --- 最小限のPeerJS (AR起動後に呼び出す) ---
-        function startNetwork() {
-            const peer = new Peer('quest-receiver');
-            peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
-            peer.on('call', call => {
-                call.answer(new MediaStream());
-                call.on('stream', s => { document.getElementById('audio').srcObject = s; });
-            });
-            msg.innerText = "NETWORK ACTIVE";
-        }
+        // --- Network ---
+        const peer = new Peer('quest-receiver');
+        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
+        peer.on('call', call => {
+            call.answer(new MediaStream());
+            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
+        });
 
-        function setupPatterns() {
+        function setup() {
             const geoms = [
-                new THREE.OctahedronGeometry(0.5, 2), new THREE.TorusKnotGeometry(0.4, 0.08, 6, 3),
-                new THREE.CylinderGeometry(0.01, 0.01, 2, 8), new THREE.SphereGeometry(0.5, 4, 4),
-                new THREE.PlaneGeometry(0.3, 0.3), new THREE.TorusGeometry(0.6, 0.02, 16, 3),
-                new THREE.IcosahedronGeometry(1.2, 1), new THREE.BoxGeometry(0.02, 0.02, 0.02),
-                new THREE.RingGeometry(0.3, 0.7, 4), new THREE.CapsuleGeometry(0.05, 0.5, 4, 8)
+                new THREE.TorusKnotGeometry(0.5, 0.01, 150, 20), // 0: データの縺れ
+                new THREE.BoxGeometry(0.01, 0.01, 5),          // 1: 高速ワープ
+                new THREE.PlaneGeometry(3, 3, 15, 15),         // 2: グリッド膜
+                new THREE.IcosahedronGeometry(0.4, 0),         // 3: 浮遊結晶
+                new THREE.TorusGeometry(0.8, 0.2, 4, 4)        // 4: 幾何学リング
             ];
-            for(let i=0; i<10; i++) {
+            for(let i=0; i<5; i++) {
                 const g = new THREE.Group();
-                for(let j=0; j<40; j++) {
-                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, opacity: 0.5 }));
-                    m.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
+                const count = (i===1) ? 50 : 15;
+                for(let j=0; j<count; j++) {
+                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, opacity: 0.6 }));
+                    if(i===1) m.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*3, -Math.random()*5);
+                    else m.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*3, (Math.random()-0.5)*3);
                     g.add(m);
                 }
                 g.visible = false;
@@ -63,17 +56,16 @@
             patterns[0].visible = true;
         }
 
-        async function initAR() {
-            msg.innerText = "REQUESTING...";
-            if (!navigator.xr) { alert("WebXR not supported"); return; }
-
+        async function activateAR() {
+            if (!navigator.xr) return alert("WebXR NOT SUPPORTED");
+            
             try {
-                // セッション開始（余計なオプションを削り、成功率を最大化）
-                const session = await navigator.xr.requestSession('immersive-ar');
+                // セッション要求を最小限に
+                xrSession = await navigator.xr.requestSession('immersive-ar');
                 
-                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
-                renderer.setSize(window.innerWidth, window.innerHeight);
+                await renderer.xr.setSession(xrSession);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
 
@@ -82,13 +74,7 @@
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 
-                setupPatterns();
-                
-                xrRefSpace = await session.requestReferenceSpace('local');
-                await renderer.xr.setSession(session);
-                
-                // AR起動後にネットワークと音声を解禁
-                startNetwork();
+                setup();
                 document.getElementById('audio').play().catch(()=>{});
 
                 renderer.setAnimationLoop((t, frame) => {
@@ -96,25 +82,33 @@
                     hue += 0.005;
                     if (Date.now() > nextSwitch) {
                         patterns[currentIdx].visible = false;
-                        currentIdx = (currentIdx + 1) % 10;
+                        currentIdx = (currentIdx + 1) % 5;
                         patterns[currentIdx].visible = true;
                         nextSwitch = Date.now() + 6000;
                     }
+
                     const d = window.mD;
+                    const targetPos = new THREE.Vector3(0, 0, -1.5).applyQuaternion(camera.quaternion).add(camera.position);
+                    mainGroup.position.lerp(targetPos, 0.1);
+
                     patterns[currentIdx].children.forEach((p, i) => {
                         p.rotation.y += 0.01 + d.high;
                         p.scale.setScalar(0.7 + d.low * 2);
-                        p.material.color.setHSL((hue + i/40)%1, 1, 0.5);
+                        p.material.color.setHSL((hue + i/20)%1, 1, 0.5);
+                        
+                        if(currentIdx === 1) { // Warp effect
+                            p.position.z += 0.05 + d.low*0.2;
+                            if(p.position.z > 1) p.position.z = -5;
+                        }
                     });
                     renderer.render(scene, camera);
                 });
             } catch (e) {
-                msg.innerText = "ERROR: " + e.message;
-                console.error(e);
+                alert("AR ERROR: " + e.message);
             }
         }
 
-        document.getElementById('arBtn').onclick = initAR;
+        document.getElementById('arBtn').onclick = activateAR;
     </script>
 </body>
 </html>
