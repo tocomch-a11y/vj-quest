@@ -2,14 +2,14 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>QUEST - PSY-AR</title>
+    <title>PSY-AR QUEST V3</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
-        #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 50px; font-size: 24px; background: #0f0; border-radius: 20px; font-weight: bold; z-index: 999; }
+        #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 50px; font-size: 24px; background: #0f0; border-radius: 20px; font-weight: bold; z-index: 1000; }
     </style>
 </head>
 <body>
-    <button id="arBtn">START AR</button>
+    <button id="arBtn">START VR VJ</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -19,47 +19,49 @@
         let scene, camera, renderer, mesh, xrRefSpace, geometries = [];
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
         let lastSwitch = 0, hue = 0;
-
-        // PeerJSの準備を「ボタンを押す前」に開始する（重要！）
-        const peer = new Peer('quest-receiver');
         
-        peer.on('open', (id) => { console.log('Quest ID: ' + id); });
-        peer.on('connection', c => {
-            console.log("Mac connected!");
-            c.on('data', d => { window.mD = d; });
-        });
+        const peer = new Peer('quest-receiver');
+        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => {
-                const a = document.getElementById('audio');
-                a.srcObject = s;
-                a.play().catch(e => console.error("Audio error", e));
-            });
+            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
         function initGeos() {
-            for(let i=0; i<12; i++) {
-                geometries.push(new THREE.TorusKnotGeometry(0.3, 0.08, 64, 12, i+1, i+3));
-            }
+            geometries = [
+                new THREE.TorusKnotGeometry(0.3, 0.1, 128, 16, 2, 3),
+                new THREE.IcosahedronGeometry(0.4, 0),
+                new THREE.TorusGeometry(0.4, 0.15, 16, 100),
+                new THREE.OctahedronGeometry(0.5, 0),
+                new THREE.DodecahedronGeometry(0.4, 0),
+                new THREE.SphereGeometry(0.4, 32, 32),
+                new THREE.BoxGeometry(0.5, 0.5, 0.5),
+                new THREE.TorusKnotGeometry(0.3, 0.05, 150, 20, 7, 11), // 複雑
+                new THREE.CylinderGeometry(0.2, 0.5, 0.8, 32),
+                new THREE.ConeGeometry(0.4, 0.8, 32),
+                new THREE.TorusGeometry(0.3, 0.2, 32, 100),
+                new THREE.CapsuleGeometry(0.2, 0.5, 10, 20)
+            ];
         }
 
         async function startAR() {
-            // 音声再生の「予約」
             document.getElementById('audio').play().catch(() => {});
-            
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', {
                     optionalFeatures: ['local-floor', 'hand-tracking']
                 });
-                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+                renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
                 renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
 
                 scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera();
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+                
                 initGeos();
-                mesh = new THREE.Mesh(geometries[0], new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 }));
+                // 虹色に光るマテリアル（線）
+                const mat = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 });
+                mesh = new THREE.Mesh(geometries[0], mat);
                 scene.add(mesh);
 
                 xrRefSpace = await session.requestReferenceSpace('viewer');
@@ -69,18 +71,50 @@
         }
 
         function render(time, frame) {
-            if (!xrRefSpace) return;
+            if (!xrRefSpace || !frame) return;
             const d = window.mD;
-            hue += 0.01;
-            if (d.trigger && (Date.now() - lastSwitch > 300)) {
-                mesh.geometry = geometries[Math.floor(Math.random() * 12)];
+            hue += 0.005;
+
+            // 1. 低音トリガーで形状チェンジ
+            if (d.trigger && (Date.now() - lastSwitch > 250)) {
+                mesh.geometry = geometries[Math.floor(Math.random() * geometries.length)];
                 lastSwitch = Date.now();
             }
-            const gaze = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
-            mesh.position.lerp(gaze, 0.1);
-            mesh.rotation.y += 0.02 + (d.high * 1.5);
-            mesh.scale.setScalar(0.4 + (d.low * 6)); // 低音への反応を強めた
+
+            // 2. ハンドトラッキング判定
+            let handPos = null;
+            const inputSources = frame.session.inputSources;
+            for (let i = 0; i < inputSources.length; i++) {
+                const input = inputSources[i];
+                if (input.hand) {
+                    const joint = input.hand.get('index-finger-tip'); // 人差し指の先
+                    const pose = joint ? frame.getJointPose(joint, xrRefSpace) : null;
+                    if (pose) {
+                        handPos = new THREE.Vector3(
+                            pose.transform.position.x,
+                            pose.transform.position.y,
+                            pose.transform.position.z
+                        );
+                    }
+                }
+            }
+
+            // 3. 位置の決定（手があれば手へ、なければ視線の先へ）
+            if (handPos) {
+                mesh.position.lerp(handPos, 0.2); // 手に吸い付く
+            } else {
+                const gaze = new THREE.Vector3(0, 0, -0.7).applyQuaternion(camera.quaternion).add(camera.position);
+                mesh.position.lerp(gaze, 0.1); // 視線の先にふわっと移動
+            }
+
+            // 4. 音連動のアニメーション
+            mesh.rotation.y += 0.02 + (d.high * 2.0); // 高音で激しく回転
+            mesh.rotation.x += 0.01 + (d.mid * 1.0);
+            mesh.scale.setScalar(0.3 + (d.low * 8.0)); // 低音で爆発的な大きさ
+
+            // 5. 色の変化（中音で色相をシフト）
             mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5);
+
             renderer.render(scene, camera);
         }
         document.getElementById('arBtn').onclick = startAR;
