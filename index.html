@@ -2,20 +2,23 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V35 - BARE METAL</title>
+    <title>PSY-AR V36 - RESET & BOOT</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        #btn { padding: 40px; font-size: 24px; font-weight: bold; background: #fff; border-radius: 20px; cursor: pointer; border: none; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+        #btn { padding: 40px; font-size: 24px; font-weight: bold; background: #0f0; border: none; border-radius: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <button id="btn">TEST AR LAUNCH</button>
+    <button id="btn">FORCE RESET & START AR</button>
+    <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, mainGroup;
+        let scene, camera, renderer, xrSession, mainGroup;
         let patterns = [];
+        window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, hue = 0, nextSwitch = 0;
 
         function setup() {
@@ -25,17 +28,17 @@
             scene.add(mainGroup);
 
             const geoms = [
-                new THREE.TorusKnotGeometry(0.5, 0.02, 100, 16),
+                new THREE.TorusKnotGeometry(0.5, 0.01, 150, 20),
                 new THREE.BoxGeometry(0.01, 0.01, 5),
-                new THREE.PlaneGeometry(2, 2, 10, 10),
+                new THREE.PlaneGeometry(2, 2, 12, 12),
                 new THREE.IcosahedronGeometry(0.5, 0),
-                new THREE.TorusGeometry(0.7, 0.1, 12, 48)
+                new THREE.TorusGeometry(0.7, 0.1, 10, 40)
             ];
 
             for(let i=0; i<5; i++) {
                 const g = new THREE.Group();
-                for(let j=0; j<20; j++) {
-                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 }));
+                for(let j=0; j<25; j++) {
+                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true }));
                     m.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
                     g.add(m);
                 }
@@ -46,49 +49,70 @@
             patterns[0].visible = true;
         }
 
-        async function launch() {
+        async function start() {
+            // 1. もし古いセッションがあれば終了を試みる（これが重要）
+            if (navigator.xr && xrSession) {
+                try { await xrSession.end(); } catch(e) {}
+            }
+
             try {
-                // 最優先：XRセッションの確保
-                const session = await navigator.xr.requestSession('immersive-ar', {
+                // 2. セッションリクエスト
+                xrSession = await navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['local']
                 });
 
-                // セッションが通ってから描画系を初期化
+                // 3. 成功したら即座にレンダラー作成
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
-                await renderer.xr.setSession(session);
-                
+                await renderer.xr.setSession(xrSession);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('btn').style.display = 'none';
 
                 setup();
+                
+                // 4. ARが安定した後にネットワークと音を解禁
+                initNetwork();
 
-                renderer.setAnimationLoop(() => {
+                renderer.setAnimationLoop((t, frame) => {
+                    if (!frame) return;
                     hue += 0.005;
                     if (Date.now() > nextSwitch) {
                         patterns[currentIdx].visible = false;
                         currentIdx = (currentIdx + 1) % 5;
                         patterns[currentIdx].visible = true;
-                        nextSwitch = Date.now() + 5000;
+                        nextSwitch = Date.now() + 6000;
                     }
-                    
+                    const d = window.mD;
                     const target = new THREE.Vector3(0, 0, -2).applyQuaternion(camera.quaternion).add(camera.position);
                     mainGroup.position.lerp(target, 0.1);
 
                     patterns[currentIdx].children.forEach((p, i) => {
-                        p.rotation.y += 0.02;
-                        p.material.color.setHSL((hue + i/20)%1, 1, 0.5);
+                        p.rotation.y += 0.01 + d.high;
+                        p.scale.setScalar(0.7 + d.low * 2);
+                        p.material.color.setHSL((hue + i/25)%1, 1, 0.5);
                     });
                     renderer.render(scene, camera);
                 });
 
             } catch (e) {
-                alert("Critical Launch Error: " + e.message);
-                console.error(e);
+                alert("Launch Error: " + e.message + "\nTry closing all tabs.");
             }
         }
 
-        document.getElementById('btn').onclick = launch;
+        function initNetwork() {
+            const peer = new Peer('quest-receiver');
+            peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
+            peer.on('call', call => {
+                call.answer(new MediaStream());
+                call.on('stream', s => { 
+                    const audio = document.getElementById('audio');
+                    audio.srcObject = s;
+                    audio.play().catch(()=>{});
+                });
+            });
+        }
+
+        document.getElementById('btn').onclick = start;
     </script>
 </body>
 </html>
