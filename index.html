@@ -2,96 +2,71 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V11 - 30 MODES & HYPER HANDS</title>
+    <title>PSY-AR V12 - STABLE 20</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 28px; background: #000; color: #fff; 
-            border: 2px solid #fff; border-radius: 60px; font-weight: bold; cursor: pointer;
-            z-index: 1000; box-shadow: 0 0 20px #fff;
+            padding: 40px 60px; font-size: 28px; background: #fff; color: #000; 
+            border: none; border-radius: 60px; font-weight: bold; cursor: pointer;
+            z-index: 1000; box-shadow: 0 0 30px #fff;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START ULTIMATE VJ</button>
+    <button id="arBtn">START STABLE SESSION</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace, mainGroup, parts = [];
+        let scene, camera, renderer, xrRefSpace, mainGroup;
+        let patternGroups = []; // 20種類のグループを保持
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
-        let nextAutoSwitch = 0, hue = 0, currentMode = 0;
-        let leftHandTarget = new THREE.Vector3(), rightHandTarget = new THREE.Vector3();
-        let leftActive = false, rightActive = false;
-        const audioElem = document.getElementById('audio');
+        let nextAutoSwitch = 0, hue = 0, currentIdx = 0;
+        let lHandPos = new THREE.Vector3(), rHandPos = new THREE.Vector3();
+        let lActive = false, rActive = false;
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { audioElem.srcObject = s; });
+            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        // 30種類の独自の形状生成
-        function getGeometry(mode, i) {
-            switch(mode % 30) {
-                case 0: return new THREE.BoxGeometry(0.1, 0.1, 0.1);
-                case 1: return new THREE.SphereGeometry(0.2, 8, 8);
-                case 2: return new THREE.TorusGeometry(0.3, 0.05, 16, 32);
-                case 3: return new THREE.OctahedronGeometry(0.3);
-                case 4: return new THREE.CylinderGeometry(0, 0.2, 0.5, 4);
-                case 5: return new THREE.IcosahedronGeometry(0.3, 1);
-                case 6: return new THREE.TorusKnotGeometry(0.2, 0.05, 64, 8);
-                case 7: return new THREE.DodecahedronGeometry(0.3);
-                case 8: return new THREE.TetrahedronGeometry(0.4);
-                case 9: return new THREE.RingGeometry(0.2, 0.4, 32);
-                case 10: return new THREE.CapsuleGeometry(0.1, 0.3, 4, 8);
-                case 11: return new THREE.TorusGeometry(0.3, 0.1, 3, 3);
-                case 12: return new THREE.BoxGeometry(0.02, 1, 0.02);
-                case 13: return new THREE.PlaneGeometry(0.5, 0.5);
-                case 14: return new THREE.LatheGeometry([new THREE.Vector2(0, -0.2), new THREE.Vector2(0.2, 0), new THREE.Vector2(0, 0.2)], 12);
-                case 15: return new THREE.TorusKnotGeometry(0.2, 0.02, 100, 16, 3, 5);
-                case 16: return new THREE.IcosahedronGeometry(0.4, 0);
-                case 17: return new THREE.ConeGeometry(0.2, 0.4, 32);
-                case 18: return new THREE.TorusGeometry(0.4, 0.02, 4, 100);
-                case 19: return new THREE.BoxGeometry(0.4, 0.4, 0.01);
-                case 20: return new THREE.SphereGeometry(0.3, 3, 2);
-                case 21: return new THREE.OctahedronGeometry(0.5, 2);
-                case 22: return new THREE.CylinderGeometry(0.2, 0.2, 0.1, 6);
-                case 23: return new THREE.TorusKnotGeometry(0.2, 0.08, 32, 4);
-                case 24: return new THREE.RingGeometry(0.1, 0.5, 4);
-                case 25: return new THREE.BoxGeometry(0.05, 0.05, 0.8);
-                case 26: return new THREE.DodecahedronGeometry(0.2, 1);
-                case 27: return new THREE.TorusGeometry(0.2, 0.1, 16, 4);
-                case 28: return new THREE.IcosahedronGeometry(0.1, 5);
-                case 29: return new THREE.TorusKnotGeometry(0.15, 0.05, 50, 20, 7, 9);
-                default: return new THREE.BoxGeometry(0.1, 0.1, 0.1);
-            }
-        }
+        // 20種類の形状を事前に全て生成（フリーズ防止）
+        function setupPatterns() {
+            const geometries = [
+                new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.SphereGeometry(0.2, 8, 8),
+                new THREE.TorusGeometry(0.3, 0.05, 12, 24), new THREE.OctahedronGeometry(0.3),
+                new THREE.CylinderGeometry(0, 0.2, 0.5, 4), new THREE.IcosahedronGeometry(0.3, 0),
+                new THREE.TorusKnotGeometry(0.2, 0.06, 64, 8), new THREE.DodecahedronGeometry(0.3),
+                new THREE.TetrahedronGeometry(0.4), new THREE.RingGeometry(0.1, 0.4, 6),
+                new THREE.CapsuleGeometry(0.1, 0.2, 4, 8), new THREE.TorusGeometry(0.3, 0.1, 3, 3),
+                new THREE.BoxGeometry(0.02, 0.8, 0.02), new THREE.PlaneGeometry(0.4, 0.4),
+                new THREE.TorusKnotGeometry(0.2, 0.02, 100, 16, 3, 5), new THREE.ConeGeometry(0.2, 0.5, 4),
+                new THREE.TorusGeometry(0.4, 0.02, 4, 100), new THREE.BoxGeometry(0.4, 0.05, 0.4),
+                new THREE.OctahedronGeometry(0.4, 2), new THREE.TorusKnotGeometry(0.1, 0.08, 32, 4)
+            ];
 
-        function createPattern(index) {
-            if (mainGroup) scene.remove(mainGroup);
-            mainGroup = new THREE.Group();
-            parts = [];
-            currentMode = index % 30;
-
-            for(let i=0; i<25; i++) {
-                const mat = new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, blending: THREE.AdditiveBlending });
-                const m = new THREE.Mesh(getGeometry(currentMode, i), mat);
-                m.position.set((Math.random()-0.5)*0.6, (Math.random()-0.5)*0.6, (Math.random()-0.5)*0.6);
-                m.rotation.set(Math.random()*7, Math.random()*7, Math.random()*7);
-                parts.push(m);
-                mainGroup.add(m);
-            }
-            scene.add(mainGroup);
-            nextAutoSwitch = Date.now() + (1000 + Math.random() * 2500); // 1~3.5秒で次へ
+            geometries.forEach((geo, idx) => {
+                const group = new THREE.Group();
+                for(let i=0; i<15; i++) {
+                    const mat = new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, blending: THREE.AdditiveBlending });
+                    const m = new THREE.Mesh(geo, mat);
+                    m.position.set((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
+                    m.rotation.set(Math.random()*7, Math.random()*7, Math.random()*7);
+                    group.add(m);
+                }
+                group.visible = false;
+                patternGroups.push(group);
+                mainGroup.add(group);
+            });
+            patternGroups[0].visible = true;
         }
 
         async function startAR() {
-            audioElem.play().catch(() => {});
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor', 'hand-tracking'] });
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -99,9 +74,13 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
+
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                createPattern(0);
+                mainGroup = new THREE.Group();
+                scene.add(mainGroup);
+                
+                setupPatterns();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
@@ -113,51 +92,49 @@
             const d = window.mD;
             hue += 0.005;
 
-            if (Date.now() > nextAutoSwitch) createPattern(currentMode + 1);
+            // パターン切替（2秒ごと）
+            if (Date.now() > nextAutoSwitch) {
+                patternGroups[currentIdx].visible = false;
+                currentIdx = (currentIdx + 1) % 20;
+                patternGroups[currentIdx].visible = true;
+                nextAutoSwitch = Date.now() + 2500;
+            }
 
-            // 【超高感度】関節トラッキング・ロジック
-            leftActive = false; rightActive = false;
-            const sources = frame.session.inputSources;
-            for (let s of sources) {
+            // トラッキング強化：コントローラーではなく「手」を厳密に取得
+            lActive = false; rActive = false;
+            for (let s of frame.session.inputSources) {
                 if (s.hand) {
-                    const joint = s.hand.get('middle-finger-tip'); // 最も動きが大きい指先
-                    const pose = joint ? frame.getJointPose(joint, xrRefSpace) : null;
+                    const joint = s.hand.get('wrist') || s.hand.get('middle-finger-metacarpal');
+                    const pose = frame.getJointPose(joint, xrRefSpace);
                     if (pose) {
-                        const pos = new THREE.Vector3(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-                        if (s.handedness === 'left') { leftHandTarget.lerp(pos, 0.2); leftActive = true; }
-                        if (s.handedness === 'right') { rightHandTarget.lerp(pos, 0.2); rightActive = true; }
+                        const p = pose.transform.position;
+                        if (s.handedness === 'left') { lHandPos.set(p.x, p.y, p.z); lActive = true; }
+                        if (s.handedness === 'right') { rHandPos.set(p.x, p.y, p.z); rActive = true; }
                     }
                 }
             }
 
-            // 位置決定：両手があればその中間、片手ならその手、なければ正面
+            // 位置計算
             const headFront = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
-            let finalTarget = headFront;
-            if (leftActive && rightActive) finalTarget = leftHandTarget.clone().lerp(rightHandTarget, 0.5);
-            else if (rightActive) finalTarget = rightHandTarget;
-            else if (leftActive) finalTarget = leftHandTarget;
+            let targetPos = headFront;
+            if (lActive && rActive) targetPos = lHandPos.clone().lerp(rHandPos, 0.5);
+            else if (rActive) targetPos = rHandPos;
+            else if (lActive) targetPos = lHandPos;
+            mainGroup.position.lerp(targetPos, 0.2);
 
-            mainGroup.position.lerp(finalTarget, 0.15);
-
-            // VJ演出ロジック（モードごとに配色パターンを変更）
-            parts.forEach((p, i) => {
-                p.rotation.y += (0.02 + d.high * 5);
-                p.rotation.x += (0.01 + d.mid * 3);
+            // 演出（表示中のグループのみ更新）
+            patternGroups[currentIdx].children.forEach((p, i) => {
+                p.rotation.y += 0.02 + d.high * 5;
+                p.rotation.x += 0.01 + d.mid * 2;
                 
-                const c = new THREE.Color();
-                // 3パターン周期の配色
-                if (currentMode % 3 === 0) c.setHSL((hue + i/30)%1, 1, 0.5); // 虹色
-                else if (currentMode % 3 === 1) c.setHSL(d.low*0.2, 1, d.low > 0.4 ? 0.6 : 0.2); // 炎
-                else c.setRGB(d.high, d.mid, d.low); // 音色ダイレクト
+                const color = new THREE.Color().setHSL((hue + i/15)%1, 1, 0.5);
+                p.material.color = color;
+                p.material.opacity = 0.3 + d.low * 0.7;
+                p.scale.setScalar(0.2 + d.low * 2.0);
 
-                p.material.color = c;
-                p.material.opacity = 0.2 + d.low * 0.8;
-                p.scale.setScalar(0.1 + d.low * 2.5);
-                
-                // 指の形（両手の距離）で構造物を膨らませる
-                if (leftActive && rightActive) {
-                    const dist = leftHandTarget.distanceTo(rightHandTarget);
-                    p.position.multiplyScalar(1 + (dist * 0.01));
+                if (lActive && rActive) {
+                    const dH = lHandPos.distanceTo(rHandPos);
+                    p.position.setLength(0.1 + dH * 0.5);
                 }
             });
 
