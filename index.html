@@ -2,21 +2,22 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V31 - FORCE AR</title>
+    <title>PSY-AR V32 - BOOT FIX</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
         #arBtn { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px 60px; font-size: 24px; font-weight: bold;
-            background: #00ff00; color: #000; border: none; border-radius: 50px; 
-            cursor: pointer; z-index: 2000; box-shadow: 0 0 30px rgba(0,255,0,0.6);
+            padding: 40px 80px; font-size: 28px; font-weight: bold;
+            background: #00ff00; color: #000; border: none; border-radius: 60px; 
+            cursor: pointer; box-shadow: 0 0 40px rgba(0,255,0,0.8);
+            transition: 0.2s;
         }
-        #status { position: fixed; bottom: 30px; width: 100%; text-align: center; z-index: 1000; font-family: monospace; }
+        #arBtn:active { transform: scale(0.95); opacity: 0.8; }
+        #msg { position: fixed; bottom: 40px; text-align: center; width: 100%; font-family: monospace; color: #0f0; }
     </style>
 </head>
 <body>
-    <button id="arBtn">ENTER AR MODE</button>
-    <div id="status">INITIALIZING...</div>
+    <button id="arBtn">START AR</button>
+    <div id="msg">READY</div>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -27,45 +28,20 @@
         let patterns = [];
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
-        const _v = new THREE.Vector3(), _color = new THREE.Color();
-        const statusEl = document.getElementById('status');
+        const msg = document.getElementById('msg');
 
-        // --- 1. PeerJS 遅延セットアップ関数 ---
-        function initPeer() {
+        // --- 最小限のPeerJS (AR起動後に呼び出す) ---
+        function startNetwork() {
             const peer = new Peer('quest-receiver');
-            peer.on('open', () => statusEl.innerText = "LINK READY");
-            peer.on('connection', c => { 
-                c.on('data', d => { window.mD = d; }); 
-            });
+            peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
             peer.on('call', call => {
                 call.answer(new MediaStream());
-                call.on('stream', s => { 
-                    document.getElementById('audio').srcObject = s;
-                });
+                call.on('stream', s => { document.getElementById('audio').srcObject = s; });
             });
+            msg.innerText = "NETWORK ACTIVE";
         }
 
-        // --- 2. 視覚パターン生成 ---
-        function createNumber(idx) {
-            const numData = [
-                [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],[0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
-                [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-                [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-                [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
-                [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]
-            ];
-            const group = new THREE.Group();
-            numData[idx].forEach((val, i) => {
-                if(val) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set((i%3)*0.02 - 0.02, Math.floor(i/3)*-0.02 + 0.04, 0);
-                    group.add(m);
-                }
-            });
-            return group;
-        }
-
-        function setupScene() {
+        function setupPatterns() {
             const geoms = [
                 new THREE.OctahedronGeometry(0.5, 2), new THREE.TorusKnotGeometry(0.4, 0.08, 6, 3),
                 new THREE.CylinderGeometry(0.01, 0.01, 2, 8), new THREE.SphereGeometry(0.5, 4, 4),
@@ -73,43 +49,28 @@
                 new THREE.IcosahedronGeometry(1.2, 1), new THREE.BoxGeometry(0.02, 0.02, 0.02),
                 new THREE.RingGeometry(0.3, 0.7, 4), new THREE.CapsuleGeometry(0.05, 0.5, 4, 8)
             ];
-
             for(let i=0; i<10; i++) {
-                const group = new THREE.Group();
-                group.add(createNumber(i));
-                let count = (i===7) ? 100 : 30;
-                for(let j=0; j<count; j++) {
-                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
+                const g = new THREE.Group();
+                for(let j=0; j<40; j++) {
+                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, opacity: 0.5 }));
                     m.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
-                    group.add(m);
+                    g.add(m);
                 }
-                group.visible = false;
-                patterns.push(group);
-                mainGroup.add(group);
+                g.visible = false;
+                patterns.push(g);
+                mainGroup.add(g);
             }
             patterns[0].visible = true;
         }
 
-        // --- 3. 強制AR起動エンジン ---
-        async function startAR() {
-            statusEl.innerText = "REQUESTING AR...";
-            
-            // 音声アクティブ化
-            document.getElementById('audio').play().catch(() => {});
-
-            if (!navigator.xr) {
-                statusEl.innerText = "WEBXR NOT FOUND";
-                return;
-            }
+        async function initAR() {
+            msg.innerText = "REQUESTING...";
+            if (!navigator.xr) { alert("WebXR not supported"); return; }
 
             try {
-                // セッションのリクエスト（最小限の構成で成功率を高める）
-                const session = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['local']
-                });
-
-                statusEl.innerText = "SESSION GRANTED";
-
+                // セッション開始（余計なオプションを削り、成功率を最大化）
+                const session = await navigator.xr.requestSession('immersive-ar');
+                
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -121,53 +82,39 @@
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 
-                setupScene();
+                setupPatterns();
                 
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 
-                // ARが安定してから通信を開始
-                initPeer();
-                
-                renderer.setAnimationLoop(render);
-                statusEl.innerText = "AR ACTIVE";
+                // AR起動後にネットワークと音声を解禁
+                startNetwork();
+                document.getElementById('audio').play().catch(()=>{});
 
+                renderer.setAnimationLoop((t, frame) => {
+                    if (!frame) return;
+                    hue += 0.005;
+                    if (Date.now() > nextSwitch) {
+                        patterns[currentIdx].visible = false;
+                        currentIdx = (currentIdx + 1) % 10;
+                        patterns[currentIdx].visible = true;
+                        nextSwitch = Date.now() + 6000;
+                    }
+                    const d = window.mD;
+                    patterns[currentIdx].children.forEach((p, i) => {
+                        p.rotation.y += 0.01 + d.high;
+                        p.scale.setScalar(0.7 + d.low * 2);
+                        p.material.color.setHSL((hue + i/40)%1, 1, 0.5);
+                    });
+                    renderer.render(scene, camera);
+                });
             } catch (e) {
-                statusEl.innerText = "START ERROR: " + e.message;
+                msg.innerText = "ERROR: " + e.message;
                 console.error(e);
-                // 失敗時は1秒後にリロードを促す
-                setTimeout(() => { if(confirm("AR起動に失敗しました。再読み込みしますか？")) location.reload(); }, 1000);
             }
         }
 
-        function render(time, frame) {
-            if (!xrRefSpace || !frame) return;
-            const d = window.mD;
-            hue += 0.005;
-
-            if (Date.now() > nextSwitch) {
-                patterns[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 10;
-                patterns[currentIdx].visible = true;
-                nextSwitch = Date.now() + 6000;
-            }
-
-            _v.set(0, 0, -1.6).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(_v, 0.1);
-
-            patterns[currentIdx].children.forEach((p, i) => {
-                if (i === 0) { p.lookAt(camera.position); return; }
-                p.rotation.y += 0.01 + d.high;
-                p.scale.setScalar(0.7 + d.low * 2.0);
-                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 1, 0.5);
-                p.material.color.copy(_color);
-                p.material.opacity = 0.2 + d.low * 0.8;
-            });
-            renderer.render(scene, camera);
-        }
-
-        // ボタンにイベント登録
-        document.getElementById('arBtn').addEventListener('click', startAR);
+        document.getElementById('arBtn').onclick = initAR;
     </script>
 </body>
 </html>
