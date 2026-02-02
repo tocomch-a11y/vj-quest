@@ -2,19 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V9 - HYPER HYBRID</title>
+    <title>PSY-AR V10 - TOTAL CONTROL</title>
     <style>
         body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 28px; background: #000; color: #0ff; 
-            border: 4px solid #0ff; border-radius: 50px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 40px #0ff; z-index: 1000;
+            padding: 40px 60px; font-size: 28px; background: #fff; color: #000; 
+            border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 50px rgba(255,255,255,0.8); z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START HYBRID VJ</button>
+    <button id="arBtn">START SYSTEM</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -23,7 +23,8 @@
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup, parts = [];
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
-        let nextAutoSwitch = 0, hue = 0;
+        let nextAutoSwitch = 0, hue = 0, currentMode = 0;
+        let leftHandPinch = 0, rightHandPos = new THREE.Vector3();
         const audioElem = document.getElementById('audio');
 
         const peer = new Peer('quest-receiver');
@@ -37,32 +38,39 @@
             if (mainGroup) scene.remove(mainGroup);
             mainGroup = new THREE.Group();
             parts = [];
-            const mode = index % 12;
+            currentMode = index % 12;
 
-            // 12パターンの構築
-            for(let i=0; i<20; i++) {
+            for(let i=0; i<30; i++) {
                 let geo;
-                if (mode < 4) { // 1. 構造物
-                    const geos = [new THREE.BoxGeometry(0.2,0.2,0.2), new THREE.TorusGeometry(0.3,0.1,8,20), new THREE.OctahedronGeometry(0.3), new THREE.CylinderGeometry(0.1,0.1,0.4,4)];
-                    geo = geos[mode];
-                } else if (mode < 8) { // 2. ワームホール
-                    geo = new THREE.TorusGeometry(0.5 + i*0.1, 0.01, 8, 50);
-                } else { // 3. サイケデリック
-                    geo = (i%2===0) ? new THREE.SphereGeometry(0.05,8,8) : new THREE.IcosahedronGeometry(0.1,0);
+                // --- 12種類の独自形状 ---
+                switch(currentMode) {
+                    case 0: geo = new THREE.BoxGeometry(0.5, 0.02, 0.5); break; // フローティング・プレート
+                    case 1: geo = new THREE.IcosahedronGeometry(0.3, 0); break; // 鋭い多面体
+                    case 2: geo = new THREE.TorusGeometry(0.4, 0.05, 8, 4); break; // 四角いリング
+                    case 3: geo = new THREE.CylinderGeometry(0.01, 0.01, 1); break; // ネオン・ニードル
+                    case 4: geo = new THREE.PlaneGeometry(2, 2); break; // トンネル壁
+                    case 5: geo = new THREE.TorusKnotGeometry(0.2, 0.01, 64, 8, 2, 9); break; // 螺旋鎖
+                    case 6: geo = new THREE.CircleGeometry(0.5, 32, 0, Math.PI); break; // 半円パルス
+                    case 7: geo = new THREE.BoxGeometry(0.1, 1.5, 0.1); break; // 垂直ピラー
+                    case 8: geo = new THREE.OctahedronGeometry(0.1, 1); break; // 浮遊粒子
+                    case 9: geo = new THREE.RingGeometry(0.3, 0.35, 6); break; // 六角形グリッド
+                    case 10: geo = new THREE.DodecahedronGeometry(0.4, 0); break; // 巨大なコア
+                    case 11: geo = new THREE.TorusGeometry(0.2, 0.18, 4, 3); break; // 三角形ピラミッド
                 }
 
                 const mat = new THREE.MeshBasicMaterial({ wireframe: true, transparent: true, blending: THREE.AdditiveBlending });
                 const m = new THREE.Mesh(geo, mat);
                 
-                if (mode >= 4 && mode < 8) { // ワームホール用配置
-                    m.position.z = -i * 0.5;
+                // モード別の初期配置
+                if (currentMode >= 4 && currentMode <= 7) {
+                    m.position.z = -i * 0.8; // トンネル型
                 } else {
-                    m.rotation.set(Math.random()*7, Math.random()*7, Math.random()*7);
+                    m.position.set((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
                 }
                 parts.push(m); mainGroup.add(m);
             }
             scene.add(mainGroup);
-            nextAutoSwitch = Date.now() + (2000 + Math.random() * 3000);
+            nextAutoSwitch = Date.now() + (2000 + Math.random() * 4000);
         }
 
         async function startAR() {
@@ -88,47 +96,65 @@
             const d = window.mD;
             hue += 0.005;
 
-            if (Date.now() > nextAutoSwitch) createPattern(Math.floor(Math.random()*12));
+            if (Date.now() > nextAutoSwitch) createPattern(currentMode + 1);
 
-            // 手の判定（コントローラー排除フィルタ）
-            let activeHandPos = null;
+            // --- 左右の手のトラッキング ---
+            let lPinch = 0;
             const sources = frame.session.inputSources;
             for (let s of sources) {
                 if (s.hand) {
-                    const joint = s.hand.get('middle-finger-metacarpal');
-                    const pose = joint ? frame.getJointPose(joint, xrRefSpace) : null;
-                    if (pose) {
-                        const y = pose.transform.position.y;
-                        // 床(y < 0.3)にあるものは無視し、カメラの高さに近いものだけ採用
-                        if (y > 0.4) {
-                            activeHandPos = new THREE.Vector3(pose.transform.position.x, y, pose.transform.position.z);
-                            break;
+                    const thumb = s.hand.get('thumb-tip');
+                    const index = s.hand.get('index-finger-tip');
+                    const palm = s.hand.get('middle-finger-metacarpal');
+                    const pPalm = palm ? frame.getJointPose(palm, xrRefSpace) : null;
+                    const pThumb = thumb ? frame.getJointPose(thumb, xrRefSpace) : null;
+                    const pIndex = index ? frame.getJointPose(index, xrRefSpace) : null;
+
+                    if (pPalm && pPalm.transform.position.y > 0.4) {
+                        const pos = new THREE.Vector3(pPalm.transform.position.x, pPalm.transform.position.y, pPalm.transform.position.z);
+                        if (s.handedness === 'right') rightHandPos.lerp(pos, 0.2);
+                        if (s.handedness === 'left' && pThumb && pIndex) {
+                            // 左手の人差し指と親指の距離（ピンチ）
+                            const dP = pThumb.transform.position;
+                            const dI = pIndex.transform.position;
+                            lPinch = Math.sqrt(Math.pow(dP.x-dI.x,2)+Math.pow(dP.y-dI.y,2));
                         }
                     }
                 }
             }
 
             const headFront = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(activeHandPos || headFront, 0.15);
+            mainGroup.position.lerp(rightHandPos.length() > 0 ? rightHandPos : headFront, 0.1);
 
             parts.forEach((p, i) => {
-                const mode = (Math.floor(nextAutoSwitch/1000) % 12); // 現在のモード
+                p.rotation.y += (0.01 + d.high * 5);
                 
-                p.rotation.y += (0.02 + d.high * 4);
-                
-                // スケール制御：目の前で留まるように最大値を制限
-                let baseScale = 0.3 + d.low * 1.5; 
-                if (mode >= 4 && mode < 8) { // ワームホールモード
-                    p.position.z += 0.05 + d.low * 0.2;
-                    if(p.position.z > 1) p.position.z = -8;
-                    baseScale = 1.0;
-                }
-                p.scale.setScalar(baseScale);
-
+                // --- モード別の独自カラー & スケール ---
                 const c = new THREE.Color();
-                c.setHSL((hue + i/20) % 1, 1, 0.5);
+                if (currentMode % 3 === 0) { // 赤・黒・金
+                    c.setHSL(0, 1.0, d.low > 0.5 ? 0.5 : 0.1);
+                } else if (currentMode % 3 === 1) { // シアン・マゼンタ
+                    c.setHSL(0.5 + (d.mid * 0.5), 1.0, 0.5);
+                } else { // モノクロ・フラッシュ
+                    const b = d.high > 0.6 ? 1.0 : 0.2;
+                    c.setRGB(b, b, b);
+                }
+                
+                // 左手のピンチで「拡散」
+                const spread = lPinch * 10.0;
+                if (currentMode < 4 || currentMode > 7) {
+                    p.position.x += Math.sin(time*0.005 + i) * 0.01 * spread;
+                }
+
                 p.material.color = c;
-                p.material.opacity = 0.3 + d.low * 0.7;
+                p.material.opacity = 0.2 + d.low * 0.8;
+                p.scale.setScalar(0.2 + (d.low * 2.0));
+                
+                // ワームホール進行
+                if (currentMode >= 4 && currentMode <= 7) {
+                    p.position.z += 0.05 + d.low * 0.3;
+                    if(p.position.z > 0.5) p.position.z = -20;
+                }
             });
 
             renderer.render(scene, camera);
