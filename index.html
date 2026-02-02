@@ -2,143 +2,215 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR QUEST V4 - STABLE</title>
+    <title>PSY-AR HYPER VJ - 2026</title>
     <style>
-        body { margin: 0; background: transparent; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; background: transparent; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 28px; background: #00ff00; color: #000; 
-            border: none; border-radius: 20px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 30px rgba(0,255,0,0.5); z-index: 1000;
+            padding: 40px 60px; font-size: 28px; background: #fff; color: #000; 
+            border: 8px solid #0f0; border-radius: 20px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 50px #0f0; z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START VR VJ</button>
+    <button id="arBtn">START HYPER VJ</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, mesh, xrRefSpace, geometries = [];
+        let scene, camera, renderer, xrRefSpace;
+        let mainGroup, parts = [];
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
-        let lastSwitch = 0, hue = 0;
+        let lastSwitch = 0, hue = 0, currentPattern = 0;
+        let leftHandFactor = 0; // 左手の指の開き具合用
         const audioElem = document.getElementById('audio');
-        
-        // PeerJSの設定（受信待機）
+
         const peer = new Peer('quest-receiver');
-        peer.on('connection', c => { 
-            console.log("Mac Connected");
-            c.on('data', d => { window.mD = d; }); 
-        });
+        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { audioElem.srcObject = s; });
         });
 
-        // 形状12種類の初期化（エラー回避済み版）
-        function initGeos() {
-            geometries = [
-                new THREE.TorusKnotGeometry(0.3, 0.1, 128, 16, 2, 3),
-                new THREE.IcosahedronGeometry(0.4, 0),
-                new THREE.TorusGeometry(0.4, 0.15, 16, 100),
-                new THREE.OctahedronGeometry(0.5, 0),
-                new THREE.DodecahedronGeometry(0.4, 0),
-                new THREE.SphereGeometry(0.4, 32, 32),
-                new THREE.BoxGeometry(0.5, 0.5, 0.5),
-                new THREE.TorusKnotGeometry(0.3, 0.05, 150, 20, 7, 11),
-                new THREE.CylinderGeometry(0.2, 0.5, 0.8, 32),
-                new THREE.ConeGeometry(0.4, 0.8, 32),
-                new THREE.TorusGeometry(0.3, 0.2, 32, 100),
-                new THREE.TorusKnotGeometry(0.3, 0.1, 64, 8, 3, 4) // エラー回避のための代替形状
-            ];
+        // 12種類の全く異なる構造パターンを生成する関数
+        function createPattern(index) {
+            if (mainGroup) scene.remove(mainGroup);
+            mainGroup = new THREE.Group();
+            parts = [];
+            
+            const count = 50;
+            const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+
+            switch(index % 12) {
+                case 0: // クラシックワイヤー
+                    for(let i=0; i<3; i++) {
+                        const m = new THREE.Mesh(new THREE.TorusKnotGeometry(0.3 + i*0.1, 0.05, 100, 16), new THREE.MeshBasicMaterial({wireframe:true, color: colors[i]}));
+                        parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 1: // パーティクル・スフィア
+                    const geo = new THREE.IcosahedronGeometry(0.5, 2);
+                    const mat = new THREE.PointsMaterial({size: 0.02, color: 0x0f0});
+                    const p = new THREE.Points(geo, mat);
+                    parts.push(p); mainGroup.add(p);
+                    break;
+                case 2: // フローティング・キューブ
+                    for(let i=0; i<10; i++) {
+                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({wireframe:true, color: colors[i%6]}));
+                        m.position.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5);
+                        parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 3: // ネオン・リング
+                    for(let i=0; i<8; i++) {
+                        const m = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.02, 16, 100), new THREE.MeshBasicMaterial({color: colors[i%6]}));
+                        m.rotation.x = Math.PI / i;
+                        parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 4: // クリスタル・コア
+                    const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), new THREE.MeshBasicMaterial({wireframe:true, color: 0xffffff}));
+                    const i = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshBasicMaterial({wireframe:true, color: 0x00ff00}));
+                    parts.push(c, i); mainGroup.add(c, i);
+                    break;
+                case 5: // スターバースト
+                    for(let j=0; j<20; j++) {
+                        const m = new THREE.Mesh(new THREE.CylinderGeometry(0, 0.05, 1), new THREE.MeshBasicMaterial({color: colors[j%6]}));
+                        m.rotation.set(Math.random()*7, Math.random()*7, Math.random()*7);
+                        parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 6: // デジタル・グリッド
+                    const g = new THREE.GridHelper(1, 10, 0x00ff00, 0xff00ff);
+                    parts.push(g); mainGroup.add(g);
+                    break;
+                case 7: // 二重螺旋
+                    for(let k=0; k<2; k++) {
+                        const m = new THREE.Mesh(new THREE.TorusKnotGeometry(0.3, 0.02, 128, 8, 2, 15), new THREE.MeshBasicMaterial({color: colors[k]}));
+                        m.rotation.y = k * Math.PI;
+                        parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 8: // アトミック
+                    const center = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                    mainGroup.add(center); parts.push(center);
+                    for(let l=0; l<3; l++) {
+                        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.01, 8, 64), new THREE.MeshBasicMaterial({color: 0x00ffff}));
+                        ring.rotation.set(l, l, 0); parts.push(ring); mainGroup.add(ring);
+                    }
+                    break;
+                case 9: // プレート
+                    for(let n=0; n<5; n++) {
+                        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({color: colors[n], side: THREE.DoubleSide, wireframe:true}));
+                        m.position.z = n * 0.1; parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 10: // ボール・ピラミッド
+                    for(let o=0; o<4; o++) {
+                        const m = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({wireframe:true, color: colors[o]}));
+                        m.position.set(o*0.2, o*0.2, 0); parts.push(m); mainGroup.add(m);
+                    }
+                    break;
+                case 11: // 超複雑結び目
+                    const k = new THREE.Mesh(new THREE.TorusKnotGeometry(0.3, 0.12, 200, 20, 5, 13), new THREE.MeshBasicMaterial({wireframe:true, color: 0xffffff}));
+                    parts.push(k); mainGroup.add(k);
+                    break;
+            }
+            scene.add(mainGroup);
         }
 
         async function startAR() {
-            // 音声再生のトリガー
             audioElem.play().catch(() => {});
-            
             try {
-                // ARセッションの開始
                 const session = await navigator.xr.requestSession('immersive-ar', {
                     optionalFeatures: ['local-floor', 'hand-tracking']
                 });
-                
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
                 renderer.xr.enabled = true;
-                renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
 
                 scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 
-                initGeos();
-                const mat = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 });
-                mesh = new THREE.Mesh(geometries[0], mat);
-                scene.add(mesh);
-
+                createPattern(0);
                 xrRefSpace = await session.requestReferenceSpace('viewer');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-
-            } catch (e) {
-                alert("AR Start Error: " + e.message);
-            }
+            } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
-            hue += 0.005;
+            hue += 0.002;
 
-            // 1. 低音トリガーで形状チェンジ（250ミリ秒のクールタイム）
             if (d.trigger && (Date.now() - lastSwitch > 250)) {
-                mesh.geometry = geometries[Math.floor(Math.random() * geometries.length)];
+                currentPattern++;
+                createPattern(currentPattern);
                 lastSwitch = Date.now();
             }
 
-            // 2. ハンドトラッキング判定
-            let handPos = null;
-            const inputSources = frame.session.inputSources;
-            for (let i = 0; i < inputSources.length; i++) {
-                const input = inputSources[i];
+            // ハンドトラッキング解析
+            let rightHandPos = null;
+            let leftHandPinch = 0;
+            const sources = frame.session.inputSources;
+            
+            for (let input of sources) {
                 if (input.hand) {
-                    // 人差し指の先端(index-finger-tip)を取得
-                    const joint = input.hand.get('index-finger-tip');
-                    const pose = joint ? frame.getJointPose(joint, xrRefSpace) : null;
-                    if (pose) {
-                        handPos = new THREE.Vector3(
-                            pose.transform.position.x,
-                            pose.transform.position.y,
-                            pose.transform.position.z
-                        );
+                    const indexTip = input.hand.get('index-finger-tip');
+                    const thumbTip = input.hand.get('thumb-tip');
+                    const poseIT = indexTip ? frame.getJointPose(indexTip, xrRefSpace) : null;
+                    const poseTT = thumbTip ? frame.getJointPose(thumbTip, xrRefSpace) : null;
+
+                    if (input.handedness === 'right' && poseIT) {
+                        rightHandPos = new THREE.Vector3(poseIT.transform.position.x, poseIT.transform.position.y, poseIT.transform.position.z);
+                    }
+                    if (input.handedness === 'left' && poseIT && poseTT) {
+                        // 左手の親指と人差し指の距離を計算（構造の密度に影響）
+                        const p1 = poseIT.transform.position;
+                        const p2 = poseTT.transform.position;
+                        leftHandPinch = Math.sqrt(Math.pow(p1.x-p2.x,2) + Math.pow(p1.y-p2.y,2) + Math.pow(p1.z-p2.z,2));
                     }
                 }
             }
 
-            // 3. 位置の決定（手があれば手へ、なければ視線の正面へ）
-            if (handPos) {
-                mesh.position.lerp(handPos, 0.2); // 手にスムーズに吸い付く
+            // 視線の傾き(Roll)を取得して演出に反映
+            const euler = new THREE.Euler().setFromQuaternion(camera.quaternion);
+            const roll = euler.z; // 首の傾き
+
+            // 位置と回転の更新
+            if (rightHandPos) {
+                mainGroup.position.lerp(rightHandPos, 0.2);
             } else {
-                // 視線の先（正面0.7mの位置）を計算
                 const gaze = new THREE.Vector3(0, 0, -0.7).applyQuaternion(camera.quaternion).add(camera.position);
-                mesh.position.lerp(gaze, 0.1); // 視線に合わせてふわっと移動
+                mainGroup.position.lerp(gaze, 0.1);
             }
 
-            // 4. 音連動のアニメーション
-            mesh.rotation.y += 0.02 + (d.high * 2.5); // 高音で高速回転
-            mesh.rotation.x += 0.01 + (d.mid * 1.5);  // 中音で縦回転
-            mesh.scale.setScalar(0.3 + (d.low * 10.0)); // 低音で巨大化（感度アップ）
+            // パーツごとの個別反応
+            parts.forEach((p, i) => {
+                p.rotation.y += (0.01 + d.high * 2) * (i % 2 === 0 ? 1 : -1);
+                p.rotation.z += roll * 0.5; // 首を傾けると回転が歪む
+                
+                // 低音でスケール、左手のピンチでさらに変形
+                const s = 0.5 + (d.low * 5) + (leftHandPinch * 10);
+                p.scale.setScalar(s);
 
-            // 5. 色の変化（中音に合わせて虹色がシフト）
-            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5);
+                // 個別色設定（パーツごとに異なる音域に反応）
+                const pColor = new THREE.Color();
+                if (i % 3 === 0) pColor.setHSL((hue + d.low) % 1, 1, 0.5);
+                else if (i % 3 === 1) pColor.setHSL((hue + d.mid) % 1, 0.8, 0.5);
+                else pColor.setHSL((hue + d.high) % 1, 1, 0.6);
+                
+                if (p.material) p.material.color = pColor;
+            });
 
             renderer.render(scene, camera);
         }
-
         document.getElementById('arBtn').onclick = startAR;
     </script>
 </body>
