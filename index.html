@@ -2,19 +2,14 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR QUEST (FIXED AUDIO)</title>
+    <title>QUEST - PSY-AR</title>
     <style>
-        body { margin: 0; background: transparent; overflow: hidden; font-family: sans-serif; }
-        #arBtn { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 40px 60px; font-size: 28px; background: #00ff00; color: #000; 
-            border: none; border-radius: 20px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 30px rgba(0,255,0,0.5);
-        }
+        body { margin: 0; background: transparent; overflow: hidden; }
+        #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 50px; font-size: 24px; background: #0f0; border-radius: 20px; font-weight: bold; z-index: 999; }
     </style>
 </head>
 <body>
-    <button id="arBtn">START AR & AUDIO</button>
+    <button id="arBtn">START AR</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -24,95 +19,70 @@
         let scene, camera, renderer, mesh, xrRefSpace, geometries = [];
         window.mD = { low: 0, mid: 0, high: 0, trigger: false };
         let lastSwitch = 0, hue = 0;
-        const audioElem = document.getElementById('audio');
 
-        // 12種類の形状を準備
+        // PeerJSの準備を「ボタンを押す前」に開始する（重要！）
+        const peer = new Peer('quest-receiver');
+        
+        peer.on('open', (id) => { console.log('Quest ID: ' + id); });
+        peer.on('connection', c => {
+            console.log("Mac connected!");
+            c.on('data', d => { window.mD = d; });
+        });
+        peer.on('call', call => {
+            call.answer(new MediaStream());
+            call.on('stream', s => {
+                const a = document.getElementById('audio');
+                a.srcObject = s;
+                a.play().catch(e => console.error("Audio error", e));
+            });
+        });
+
         function initGeos() {
-            geometries = [];
             for(let i=0; i<12; i++) {
-                // 音の低・中・高に合わせて複雑さが変わるように設定
-                geometries.push(new THREE.TorusKnotGeometry(0.3, 0.08, 100, 16, i + 1, i + 2));
+                geometries.push(new THREE.TorusKnotGeometry(0.3, 0.08, 64, 12, i+1, i+3));
             }
         }
 
         async function startAR() {
-            // 【重要】ボタンを押した瞬間に音声を「再生可能状態」にする
-            audioElem.play().catch(e => console.log("Audio play pending..."));
-
+            // 音声再生の「予約」
+            document.getElementById('audio').play().catch(() => {});
+            
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', {
                     optionalFeatures: ['local-floor', 'hand-tracking']
                 });
-                
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
 
                 scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                
+                camera = new THREE.PerspectiveCamera();
                 initGeos();
                 mesh = new THREE.Mesh(geometries[0], new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 }));
                 scene.add(mesh);
 
                 xrRefSpace = await session.requestReferenceSpace('viewer');
                 await renderer.xr.setSession(session);
-                
-                // 通信開始
-                initPeer();
                 renderer.setAnimationLoop(render);
-
-            } catch (e) {
-                alert("AR起動エラー: " + e.message);
-            }
-        }
-
-        function initPeer() {
-            const peer = new Peer('quest-receiver');
-            
-            peer.on('connection', conn => {
-                conn.on('data', data => {
-                    window.mD = data; // Macからの数値（low, mid, high）を受け取る
-                });
-            });
-
-            peer.on('call', call => {
-                // Macからの音声ストリームに応答
-                call.answer(new MediaStream()); 
-                call.on('stream', remoteStream => {
-                    // 受信した音をaudio要素にセットして再生
-                    audioElem.srcObject = remoteStream;
-                    audioElem.play().catch(e => console.log("Audio resume failed"));
-                });
-            });
+            } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
-            if (!frame || !xrRefSpace) return;
+            if (!xrRefSpace) return;
             const d = window.mD;
-            hue += 0.005;
-
-            // 低音トリガーで形状をランダムに変更
+            hue += 0.01;
             if (d.trigger && (Date.now() - lastSwitch > 300)) {
                 mesh.geometry = geometries[Math.floor(Math.random() * 12)];
                 lastSwitch = Date.now();
             }
-
-            // 常に視線の先に配置
             const gaze = new THREE.Vector3(0, 0, -0.6).applyQuaternion(camera.quaternion).add(camera.position);
             mesh.position.lerp(gaze, 0.1);
-
-            // 音に反応する演出
-            mesh.rotation.y += 0.02 + (d.high * 0.8); // 高音で回転が速くなる
-            mesh.scale.setScalar(0.4 + (d.low * 5)); // 低音で巨大化
-            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5); // 中音で色が変化
-
+            mesh.rotation.y += 0.02 + (d.high * 1.5);
+            mesh.scale.setScalar(0.4 + (d.low * 6)); // 低音への反応を強めた
+            mesh.material.color.setHSL((hue + d.mid) % 1, 1, 0.5);
             renderer.render(scene, camera);
         }
-
         document.getElementById('arBtn').onclick = startAR;
     </script>
 </body>
