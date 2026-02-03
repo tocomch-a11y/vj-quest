@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V55 - PERFECT SYNC & TEXTURE</title>
+    <title>PSY-AR V56 - AUDIO RECOVERY</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V55</button>
+    <button id="arBtn">START SESSION V56</button>
     <audio id="audio" playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -23,6 +23,7 @@
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup, audioCtx, delayNode;
         let patterns = [];
+        let remoteStream = null; // ストリームを保持
         window.mD = { low:0.1, mid:0.1, high:0.1, rms:0.2, beat:0, centroid:0.5, flux:0, pan:0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0, beatAcc = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
@@ -32,35 +33,43 @@
             c.on('data', d => { if(d) for(let k in window.mD) if(d[k]!==undefined) window.mD[k]=d[k]; });
         });
 
-        // 音声遅延補正システムのセットアップ
-        function setupAudioDelay(stream) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        // 音声システムのセットアップ（開始ボタン後に実行）
+        async function initAudioSystem(stream) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            // 中断されている場合は再開（セキュリティ対策）
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            
             const source = audioCtx.createMediaStreamSource(stream);
             delayNode = audioCtx.createDelay(1.0);
-            // ここで遅延秒数を調整 (0.1 = 100ms)。ビジュアルが早いならこの値を増やす
-            delayNode.delayTime.value = 0.15; 
+            delayNode.delayTime.value = 0.18; // 同期のためのディレイ（秒）
             source.connect(delayNode);
             delayNode.connect(audioCtx.destination);
+            console.log("Audio System Active with Delay:", delayNode.delayTime.value);
         }
 
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { setupAudioDelay(s); });
+            call.on('stream', s => { 
+                remoteStream = s; // ストリームを受け取っておく
+                // もし既にARが開始されていたら即座にオーディオ初期化
+                if (audioCtx && audioCtx.state !== 'suspended') {
+                    initAudioSystem(s);
+                }
+            });
         });
 
         function setup() {
             for(let i=1; i<=17; i++) {
                 const group = new THREE.Group();
                 let geo, count = 30;
-                // パターンごとに線の太さ・点線設定・明るさを変える
-                let matParams = { 
-                    transparent: true, 
-                    opacity: 0.6,
-                    wireframe: true 
-                };
+                let matParams = { transparent: true, opacity: 0.6, wireframe: true };
 
                 switch(i) {
-                    case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 80, 12); matParams.wireframeLinewidth = 1; break;
+                    case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 80, 12); break;
                     case 2: geo = new THREE.TorusGeometry(0.5, 0.05, 12, 48); break;
                     case 3: geo = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 8); break;
                     case 4: geo = new THREE.BoxGeometry(0.015, 2.5, 0.015); count = 40; break;
@@ -80,22 +89,12 @@
                 }
 
                 for(let j=0; j<count; j++) {
-                    // 各パターンでマテリアルの質感を変える
                     const mat = new THREE.MeshBasicMaterial({...matParams});
-                    // 点線風のエフェクト（一部パターンのみ）
                     if([2, 7, 13, 17].includes(i)) mat.wireframe = false; 
-
                     const m = new THREE.Mesh(geo, mat);
                     const seed = i * 13 + j * 7;
                     if(i!==8 && i!==15) m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
-                    
-                    m.userData = { 
-                        syncType: j % 8, 
-                        offset: seed, 
-                        speedMult: 0.8 + Math.random(),
-                        // パターンごとにカクカクの度合い（ステップ数）を変える
-                        steps: (i % 5) + 3 
-                    };
+                    m.userData = { syncType: j % 8, offset: seed, speedMult: 0.8 + Math.random(), steps: (i % 5) + 3 };
                     group.add(m);
                 }
                 group.visible = false; patterns.push(group); mainGroup.add(group);
@@ -105,7 +104,15 @@
 
         async function start() {
             try {
+                // セッション開始
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
+                
+                // --- オーディオ強制有効化 ---
+                if (remoteStream) {
+                    await initAudioSystem(remoteStream);
+                }
+                // -------------------------
+
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
@@ -140,30 +147,19 @@
                 if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
                 const val = [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan][p.userData.syncType] || 0.1;
                 const idx = currentIdx + 1;
-
-                // 質感の差別化: パターンごとに明暗・濃淡を制御
                 const brightness = idx % 2 === 0 ? 0.6 : 0.3;
                 _color.setHSL((hue + p.userData.offset + val*0.3)%1, 0.8, brightness + d.rms * 0.4);
                 p.material.color.copy(_color);
-                
-                // 線の質感（太さの擬似表現：スケール連動）
                 p.material.opacity = (idx % 3 === 0) ? 0.4 : 0.8 * d.rms;
-
-                // スケール
                 p.scale.setScalar(Math.max(0.1, 0.5 + val * 3.5));
 
-                // カクカク度合いの個別化
-                // 3ステップ（荒い）から8ステップ（細かい）までパターンごとに分散
                 const stepCount = p.userData.steps;
                 const step = Math.floor(beatAcc * stepCount + d.low * 5) * (Math.PI * 2 / stepCount);
-
                 const stepRotateIdx = [1,2,3,4,6,7,11,12,13,14,15,16];
                 if(stepRotateIdx.includes(idx)) {
                     p.rotation.y = step * p.userData.speedMult;
                     p.rotation.z = step * 0.5;
-                } else {
-                    p.rotation.y += (0.02 + d.flux * 0.4);
-                }
+                } else { p.rotation.y += (0.02 + d.flux * 0.4); }
 
                 if(idx === 17) {
                     const stepPos = Math.floor(j * 0.1 + beatAcc * 4 + d.low * 4);
