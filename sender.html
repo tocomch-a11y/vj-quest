@@ -1,81 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Mac Audio Processor</title>
-    <style>
-        body { background: #111; color: #00ff00; font-family: 'Courier New', monospace; text-align: center; padding: 50px; }
-        #btn { 
-            padding: 30px 60px; font-size: 24px; cursor: pointer; 
-            background: #00ff00; border: none; border-radius: 50px; font-weight: bold;
-            box-shadow: 0 0 20px #00ff00;
-        }
-        #status { margin-top: 30px; font-size: 20px; color: #00ffff; }
-        .info { color: #888; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <h1>MAC SENDER</h1>
-    <p class="info">Make sure Quest AR is running first!</p>
-    <button id="btn">START SYNC</button>
-    <div id="status">STATUS: STANDBY</div>
-
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="background:#111; color:#0f0; text-align:center;">
+    <button id="btn" style="padding:50px; font-size:20px;">START MAC SENDER</button>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
-        const btn = document.getElementById('btn');
-        const status = document.getElementById('status');
-        
-        // Random ID for Mac to avoid conflicts
-        const peer = new Peer('mac-host-' + Math.floor(Math.random() * 999));
-        let dataConn;
-
-        btn.onclick = async () => {
-            try {
-                status.innerText = "Accessing System Audio...";
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                const audioCtx = new AudioContext();
-                const source = audioCtx.createMediaStreamSource(stream);
-                const analyzer = audioCtx.createAnalyser();
-                analyzer.fftSize = 256;
-                source.connect(analyzer);
-                const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-
-                status.innerText = "Linking to Quest (quest-receiver)...";
-
-                // 1. Send Audio Stream
-                peer.call('quest-receiver', stream);
-
-                // 2. Open Data Channel
-                dataConn = peer.connect('quest-receiver');
-
-                dataConn.on('open', () => {
-                    status.innerText = "CONNECTED: TRANSMITTING AUDIO PULSE";
-                    
-                    function analyze() {
-                        analyzer.getByteFrequencyData(dataArray);
-                        
-                        // Frequency Mapping (Bass, Mid, High)
-                        const low = dataArray[4] / 255;
-                        const mid = dataArray[15] / 255;
-                        const high = dataArray[40] / 255;
-
-                        if (dataConn.open) {
-                            dataConn.send({
-                                low: low,
-                                mid: mid,
-                                high: high,
-                                trigger: low > 0.85 // Kick drum detection
-                            });
-                        }
-                        requestAnimationFrame(analyze);
-                    }
-                    analyze();
-                });
-
-            } catch (err) {
-                status.innerText = "CONNECTION FAILED: " + err.message;
-            }
+        const peer = new Peer('mac-sender-' + Math.floor(Math.random()*999));
+        document.getElementById('btn').onclick = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const ctx = new AudioContext();
+            const analyzer = ctx.createAnalyser();
+            ctx.createMediaStreamSource(stream).connect(analyzer);
+            const data = new Uint8Array(analyzer.frequencyBinCount);
+            
+            peer.call('quest-receiver', stream);
+            const conn = peer.connect('quest-receiver');
+            conn.on('open', () => {
+                setInterval(() => {
+                    analyzer.getByteFrequencyData(data);
+                    conn.send({ low: data[4]/255, mid: data[15]/255, trigger: data[4]>210 });
+                }, 20);
+            });
         };
     </script>
 </body>
