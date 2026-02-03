@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V57 - FORCE AUDIO UNLOCK</title>
+    <title>PSY-AR V58 - FINAL AUDIO FIX</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,8 +14,8 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V57</button>
-    <audio id="audio" playsinline></audio>
+    <button id="arBtn">START SESSION V58</button>
+    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
@@ -29,7 +29,6 @@
         let currentIdx = 0, nextSwitch = 0, hue = 0, beatAcc = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
-        // 1. PeerJS 接続設定
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
             c.on('data', d => { if(d) for(let k in window.mD) if(d[k]!==undefined) window.mD[k]=d[k]; });
@@ -38,25 +37,32 @@
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { 
-                console.log("Stream received");
+                console.log("Stream received!");
                 remoteStream = s;
-                // もし既にAudioContextがあれば即座に接続
-                if (audioCtx && audioCtx.state === 'running') {
-                    connectStream(s);
-                }
+                // 方法1: Audio要素に直接流す（これが最も確実）
+                const audioEl = document.getElementById('remoteAudio');
+                audioEl.srcObject = s;
+                audioEl.play().catch(e => console.log("Audio El Play Error:", e));
+                
+                // 方法2: WebAudioに接続（遅延補正用）
+                if (audioCtx) connectStream(s);
             });
         });
 
-        // 2. 音声ストリームを遅延ノードに接続する関数
         function connectStream(stream) {
-            if (streamSource) streamSource.disconnect();
-            streamSource = audioCtx.createMediaStreamSource(stream);
-            if (!delayNode) {
-                delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.22; // 遅延補正（秒）
-                delayNode.connect(audioCtx.destination);
-            }
-            streamSource.connect(delayNode);
+            try {
+                if (streamSource) streamSource.disconnect();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                streamSource = audioCtx.createMediaStreamSource(stream);
+                if (!delayNode) {
+                    delayNode = audioCtx.createDelay(1.0);
+                    delayNode.delayTime.value = 0.25; 
+                    delayNode.connect(audioCtx.destination);
+                }
+                streamSource.connect(delayNode);
+                console.log("WebAudio Connected");
+            } catch(e) { console.error("WebAudio Link Error:", e); }
         }
 
         function setup() {
@@ -99,20 +105,20 @@
 
         async function start() {
             try {
-                // --- 強制オーディオ解除 ---
+                // AudioContextの生成
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // 空のバッファを再生して「音を出せる状態」とブラウザに認識させる
-                const silentBuffer = audioCtx.createBuffer(1, 1, 22050);
-                const silentSource = audioCtx.createBufferSource();
-                silentSource.buffer = silentBuffer;
-                silentSource.connect(audioCtx.destination);
-                silentSource.start();
-
                 if (audioCtx.state === 'suspended') await audioCtx.resume();
+                
+                // 強制アンロック用のダミー音
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                gain.gain.value = 0.001;
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+
                 if (remoteStream) connectStream(remoteStream);
 
-                // --- AR セッション開始 ---
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
@@ -125,6 +131,12 @@
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
+
+                // 定期的にオーディオを監視
+                setInterval(() => {
+                    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                }, 1000);
+
             } catch (e) { alert("Error: " + e.message); }
         }
 
