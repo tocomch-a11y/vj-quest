@@ -2,18 +2,23 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V59 - RECOVERY</title>
+    <title>PSY-AR V59 - AUDIO FORCE</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
             padding: 30px; font-size: 20px; font-weight: bold;
-            background: #00ff00; color: #000; border: none; cursor: pointer; z-index: 1000;
+            background: #00ff00; color: #000; border: none; z-index: 1000;
+        }
+        #status {
+            position: fixed; top: 10px; left: 10px; color: #0f0; 
+            background: rgba(0,0,0,0.7); padding: 5px; z-index: 1001; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYNC V59 (RECOVERY)</button>
+    <div id="status">Audio: Waiting... / Peer: Connecting...</div>
+    <button id="arBtn">START VR & FORCE AUDIO</button>
     <audio id="remoteAudio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -24,11 +29,18 @@
         let audioCtx, delayNode, streamSource;
         let remoteStream = null;
         let blockL, blockR;
+        const statusEl = document.getElementById('status');
         window.mD = { low: 0, mid: 0, high: 0 };
 
+        // --- PeerJS初期化 ---
         const peer = new Peer('quest-receiver');
 
+        peer.on('open', (id) => {
+            statusEl.innerText = "Peer: Ready (" + id + ")";
+        });
+
         peer.on('connection', c => {
+            statusEl.innerText = "Peer: Connected!";
             c.on('data', d => { if(d) window.mD = d; });
         });
 
@@ -36,52 +48,43 @@
             call.answer(new MediaStream());
             call.on('stream', s => { 
                 remoteStream = s;
-                // audioタグに流し込む
+                statusEl.innerText = "Audio: Stream Received!";
                 const audioEl = document.getElementById('remoteAudio');
                 audioEl.srcObject = s;
-                // WebAudio(ディレイ調整用)に接続
-                if (audioCtx) connectStream(s);
+                // ブラウザの制限を突破するための「空再生」
+                audioEl.play().catch(e => console.log("Waiting for user click"));
             });
         });
 
         function connectStream(stream) {
-            // 既存の接続を解除
-            if (streamSource) streamSource.disconnect();
-            
-            // AudioContextが停止していたら再開
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx.resume();
 
+            if (streamSource) streamSource.disconnect();
             streamSource = audioCtx.createMediaStreamSource(stream);
             
             if (!delayNode) {
                 delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.25; // ここで遅延調整
+                delayNode.delayTime.value = 0.25;
                 delayNode.connect(audioCtx.destination);
             }
             streamSource.connect(delayNode);
-        }
-
-        function setupVisuals() {
-            mainGroup = new THREE.Group();
-            scene.add(mainGroup);
-
-            const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
-            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            mainGroup.add(blockL, blockR);
-            
-            // センターライン
-            const line = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.5, 0.01), new THREE.MeshBasicMaterial({color: 0xffffff}));
-            mainGroup.add(line);
+            statusEl.innerText = "Audio: Connected to WebAudio";
         }
 
         async function start() {
-            try {
-                // 1. AudioContextをユーザー操作直後に作成
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                await audioCtx.resume();
+            // ユーザーがボタンを押したこの瞬間に、すべてのオーディオ機能をアクティブ化する
+            const audioEl = document.getElementById('remoteAudio');
+            audioEl.play(); // ストリームがなくても一旦再生状態にする
 
-                // 2. XRセッション開始
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            await audioCtx.resume();
+
+            if (remoteStream) {
+                connectStream(remoteStream);
+            }
+
+            try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.xr.enabled = true;
@@ -91,40 +94,37 @@
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 
-                setupVisuals();
-
-                // すでにストリームが届いていれば接続
-                if (remoteStream) connectStream(remoteStream);
+                // ビジュアル構築
+                mainGroup = new THREE.Group();
+                const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+                blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+                blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+                mainGroup.add(blockL, blockR);
+                scene.add(mainGroup);
 
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-            } catch (e) { alert(e.message); }
+            } catch (e) { 
+                statusEl.innerText = "XR Error: " + e.message;
+            }
         }
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
-
-            // カメラの前に追従
             const head = camera.position;
             const rot = camera.quaternion;
             mainGroup.position.copy(head).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(rot));
             mainGroup.quaternion.copy(rot);
 
-            // V59の動き: low(低域)に合わせてブロックが衝突
             const impact = window.mD.low || 0;
             const gap = 0.4 * (1.0 - Math.min(1.0, impact * 1.5));
             blockL.position.x = -gap;
             blockR.position.x = gap;
-
-            // 色の変化
-            if (impact > 0.5) {
-                blockL.material.color.set(0xffffff);
-                blockR.material.color.set(0xffffff);
-            } else {
-                blockL.material.color.set(0x00ff00);
-                blockR.material.color.set(0x00ff00);
-            }
+            
+            const color = impact > 0.5 ? 0xffffff : 0x00ff00;
+            blockL.material.color.set(color);
+            blockR.material.color.set(color);
 
             renderer.render(scene, camera);
         }
