@@ -2,74 +2,101 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>SENDER - AUDIO</title>
+    <title>SENDER - STABLE VERSION</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .box { background: #f0f0f0; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+        button { padding: 10px 20px; cursor: pointer; font-weight: bold; }
+        #rms { font-size: 32px; font-family: monospace; color: #007bff; }
+    </style>
 </head>
 <body>
-    <button id="start">1. START AUDIO (VB-CABLE)</button>
-    <button id="connect">2. CONNECT TO QUEST</button>
-    <div id="status">Status: Idle</div>
+    <h2>SENDER - STABLE VERSION</h2>
+
+    <div class="box">
+        <p>1. 受信機（Quest）に接続します</p>
+        <button id="btn1">1. CONNECT TO QUEST</button>
+    </div>
+
+    <div class="box">
+        <p>2. 音源ファイル（時報など）を選択してください</p>
+        <input type="file" id="fileInput" accept="audio/*">
+    </div>
+
+    <div class="box">
+        <p>3. 再生と解析を開始します</p>
+        <button id="btn2" style="background: #28a745; color: white; border: none;">2. START PLAY & SYNC</button>
+    </div>
+
+    <div id="status" style="margin-top:20px; font-weight:bold;">STATUS: IDLE</div>
+    <div id="rms">RMS: 0.000</div>
 
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
-        let peer, conn, audioStream;
-        const status = document.getElementById('status');
+        const peer = new Peer('pc-sender');
+        let conn, audioCtx, analyser, dataArray, source, streamDest;
+        const audioTag = new Audio();
 
-        // 手順1: 音声をキャプチャ
-        document.getElementById('start').onclick = async () => {
-            try {
-                audioStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { 
-                        echoCancellation: false, 
-                        noiseSuppression: false, 
-                        autoGainControl: false 
-                    } 
-                });
-                setupAudio(audioStream);
-                status.innerText = "Audio captured. Now connect to Quest.";
-            } catch (e) { status.innerText = "Mic Error: " + e.message; }
-        };
-
-        // 手順2: Questに接続
-        document.getElementById('connect').onclick = () => {
-            if (!peer) peer = new Peer('mac-sender-' + Math.floor(Math.random()*1000));
-            
-            peer.on('open', () => {
-                conn = peer.connect('quest-receiver');
-                peer.call('quest-receiver', audioStream);
-                
-                conn.on('open', () => {
-                    status.innerText = "Connected! Transmitting...";
-                });
-                
-                conn.on('error', (e) => {
-                    status.innerText = "Connect Error: " + e.type;
-                    console.log(e);
-                });
+        // 1. 接続処理
+        document.getElementById('btn1').onclick = () => {
+            conn = peer.connect('quest-receiver');
+            conn.on('open', () => {
+                document.getElementById('status').innerText = "STATUS: CONNECTED!";
+                document.getElementById('status').style.color = "green";
             });
         };
 
-        function setupAudio(stream) {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const src = ctx.createMediaStreamSource(stream);
-            const ana = ctx.createAnalyser();
-            ana.fftSize = 256;
-            src.connect(ana);
-            const data = new Uint8Array(ana.frequencyBinCount);
+        // 2 & 3. 再生・解析・送信処理
+        document.getElementById('btn2').onclick = async () => {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) { alert("ファイルを選択してください"); return; }
+
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // Questへ音を送るためのストリーム先を作成
+                streamDest = audioCtx.createMediaStreamDestination();
+            }
+
+            audioTag.src = URL.createObjectURL(file);
+            
+            if (!source) {
+                source = audioCtx.createMediaElementSource(audioTag);
+                source.connect(analyser);
+                // 自分のPCでも聞くために接続
+                analyser.connect(audioCtx.destination);
+                // ストリーム送信先にも接続
+                analyser.connect(streamDest);
+            }
+
+            // Questへ音声ストリームを電話(Call)
+            peer.call('quest-receiver', streamDest.stream);
+
+            audioTag.play();
+            document.getElementById('status').innerText = "STATUS: SYNCING...";
 
             function loop() {
-                ana.getByteFrequencyData(data);
-                // 低・中・高域の感度調整
-                const low = data.slice(0, 5).reduce((a, b) => a + b) / 1275;
-                const mid = data.slice(5, 30).reduce((a, b) => a + b) / 6375;
-                const high = data.slice(30, 100).reduce((a, b) => a + b) / 17850;
+                analyser.getByteTimeDomainData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    let v = (dataArray[i] - 128) / 128;
+                    sum += v * v;
+                }
+                let rms = Math.sqrt(sum / dataArray.length);
                 
+                document.getElementById('rms').innerText = "RMS: " + rms.toFixed(3);
+                
+                // RMSデータをデータチャネルで送信
                 if (conn && conn.open) {
-                    conn.send({ low, mid, high, trigger: low > 0.7 });
+                    conn.send({ rms: rms });
                 }
                 requestAnimationFrame(loop);
             }
             loop();
-        }
+        };
     </script>
 </body>
 </html>
