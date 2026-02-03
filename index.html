@@ -1,24 +1,35 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>QUEST V69</title>
+<head><meta charset="UTF-8"><title>QUEST V70 - BYPASS LOCK</title>
 <style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; }</style>
 </head>
 <body>
-    <button id="arBtn">START VR MODE V69</button>
+    <button id="arBtn">START VR MODE V70</button>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         let scene, camera, renderer, xrRefSpace, blockL, blockR, group;
-        let currentRMS = 0; // グローバルで保持
+        let lastReceivedRMS = 0;
+        let peer, dataConnection;
 
-        const peer = new Peer('quest-receiver');
-        peer.on('connection', c => {
-            c.on('data', d => { if(d && d.r !== undefined) currentRMS = d.r; });
+        // 1. PeerJSの初期化をVR開始前に行う
+        peer = new Peer('quest-receiver');
+        
+        peer.on('connection', conn => {
+            dataConnection = conn;
+            conn.on('data', d => {
+                if(d && d.r !== undefined) {
+                    lastReceivedRMS = d.r; // データが届いたら即座に更新
+                }
+            });
         });
+
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { document.getElementById('remoteAudio').srcObject = s; });
+            call.on('stream', s => { 
+                document.getElementById('remoteAudio').srcObject = s;
+            });
         });
 
         async function start() {
@@ -32,7 +43,7 @@
             camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
             
             group = new THREE.Group();
-            const geo = new THREE.BoxGeometry(0.08, 0.3, 0.08);
+            const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
             blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             group.add(blockL, blockR);
@@ -41,24 +52,33 @@
             xrRefSpace = await session.requestReferenceSpace('local');
             await renderer.xr.setSession(session);
 
+            // VRレンダリングループ開始
             renderer.setAnimationLoop((t, frame) => {
                 if (!frame) return;
+
+                // --- 通信の生存確認用デバッグ ---
+                // RMSが来ているときは白、来ていないときは緑を維持
+                const s = Math.min(1.0, lastReceivedRMS * 15.0);
+
                 const head = camera.position;
                 const q = camera.quaternion;
-                group.position.copy(head).add(new THREE.Vector3(0, 0, -1).applyQuaternion(q));
+                const offset = new THREE.Vector3(0, 0, -1.2).applyQuaternion(q);
+                group.position.copy(head).add(offset);
                 group.quaternion.copy(q);
 
-                // --- ここで確実に currentRMS を反映 ---
-                // 感度を20倍にアップ
-                const s = Math.min(1.0, currentRMS * 20.0);
-                const gap = 0.4 * (1.0 - s);
+                // 動きの反映（線形補間をあえて外して、生の反応を見る）
+                const gap = 0.5 * (1.0 - s);
                 blockL.position.x = -gap;
                 blockR.position.x = gap;
 
-                // 衝突時に白く光る
-                blockL.material.color.set(s > 0.5 ? 0xffffff : 0x00ff00);
-                blockR.material.color.set(s > 0.5 ? 0xffffff : 0x00ff00);
-                
+                // 0.02(微音)以上の反応があれば赤くする（最も目立つ色）
+                if (s > 0.05) {
+                    blockL.material.color.set(0xff0000); 
+                    blockR.material.color.set(0xff0000);
+                } else {
+                    blockL.material.color.set(0x00ff00);
+                }
+
                 renderer.render(scene, camera);
             });
         }
