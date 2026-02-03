@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V54 - STEP SYNC</title>
+    <title>PSY-AR V55 - PERFECT SYNC & TEXTURE</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,14 +14,14 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V54</button>
-    <audio id="audio" autoplay playsinline></audio>
+    <button id="arBtn">START SESSION V55</button>
+    <audio id="audio" playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace, mainGroup;
+        let scene, camera, renderer, xrRefSpace, mainGroup, audioCtx, delayNode;
         let patterns = [];
         window.mD = { low:0.1, mid:0.1, high:0.1, rms:0.2, beat:0, centroid:0.5, flux:0, pan:0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0, beatAcc = 0;
@@ -31,69 +31,71 @@
         peer.on('connection', c => {
             c.on('data', d => { if(d) for(let k in window.mD) if(d[k]!==undefined) window.mD[k]=d[k]; });
         });
+
+        // 音声遅延補正システムのセットアップ
+        function setupAudioDelay(stream) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            delayNode = audioCtx.createDelay(1.0);
+            // ここで遅延秒数を調整 (0.1 = 100ms)。ビジュアルが早いならこの値を増やす
+            delayNode.delayTime.value = 0.15; 
+            source.connect(delayNode);
+            delayNode.connect(audioCtx.destination);
+        }
+
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { document.getElementById('audio').srcObject = s; });
+            call.on('stream', s => { setupAudioDelay(s); });
         });
-
-        function createGradLine(w, h, d, isVertical=true) {
-            const geo = new THREE.BoxGeometry(w, h, d);
-            const pos = geo.attributes.position;
-            const colors = [];
-            for (let i = 0; i < pos.count; i++) {
-                const ratio = isVertical ? (pos.getY(i) / h + 0.5) : (pos.getZ(i) / d + 0.5);
-                colors.push(ratio, Math.random(), 1 - ratio);
-            }
-            geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            return geo;
-        }
-
-        const digits = [[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],[0,1,0,1,1,0,0,1,0,0,1,0,0,1,0],[1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],[1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],[1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],[1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]];
-        function createIDLabel(id) {
-            const group = new THREE.Group();
-            const drawDigit = (n, x) => digits[n].forEach((v, i) => { if(v) {
-                const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                m.position.set(x + (i%3)*0.02, Math.floor(i/3)*-0.02, 0); group.add(m);
-            }});
-            if(id >= 10) { drawDigit(Math.floor(id/10), -0.04); drawDigit(id%10, 0.04); }
-            else { drawDigit(id, 0); }
-            group.name = "ID_LABEL"; group.position.set(0.6, 0.6, 0); return group;
-        }
 
         function setup() {
             for(let i=1; i<=17; i++) {
-                const group = new THREE.Group(); group.add(createIDLabel(i));
-                let geo, count = 30, useVertexColor = false;
+                const group = new THREE.Group();
+                let geo, count = 30;
+                // パターンごとに線の太さ・点線設定・明るさを変える
+                let matParams = { 
+                    transparent: true, 
+                    opacity: 0.6,
+                    wireframe: true 
+                };
+
                 switch(i) {
-                    case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 80, 12); break;
+                    case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 80, 12); matParams.wireframeLinewidth = 1; break;
                     case 2: geo = new THREE.TorusGeometry(0.5, 0.05, 12, 48); break;
                     case 3: geo = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 8); break;
-                    case 4: geo = createGradLine(0.015, 2.5, 0.015, true); count = 50; useVertexColor = true; break;
-                    case 5: geo = new THREE.TorusKnotGeometry(0.6, 0.05, 64, 16, 12, 15); break; // 軽量化
-                    case 6: geo = new THREE.TorusGeometry(0.8, 0.15, 12, 32); break;
-                    case 7: geo = createGradLine(0.015, 0.015, 4, false); count = 50; useVertexColor = true; break;
-                    case 8: geo = new THREE.PlaneGeometry(2.5, 2.5, 8, 8); count = 4; break;
-                    case 9: geo = new THREE.IcosahedronGeometry(0.4, 0); count = 25; break;
-                    case 10: geo = new THREE.CylinderGeometry(1.2, 1.2, 0.02, 32); count = 6; break;
-                    case 11: geo = new THREE.TorusKnotGeometry(0.5, 0.15, 80, 12, 2, 3); count = 6; break;
-                    case 12: geo = new THREE.TorusGeometry(0.6, 0.2, 4, 4); break;
-                    case 13: geo = new THREE.TorusGeometry(1.2, 0.005, 8, 48); break;
-                    case 14: geo = new THREE.TorusKnotGeometry(0.6, 0.25, 30, 8); count = 5; break;
-                    case 15: geo = new THREE.SphereGeometry(1.7, 12, 10); count = 1; break;
+                    case 4: geo = new THREE.BoxGeometry(0.015, 2.5, 0.015); count = 40; break;
+                    case 5: geo = new THREE.TorusKnotGeometry(0.6, 0.05, 64, 16); matParams.opacity = 0.9; break; 
+                    case 6: geo = new THREE.TorusGeometry(0.8, 0.15, 8, 20); break;
+                    case 7: geo = new THREE.BoxGeometry(0.01, 0.01, 4); count = 40; break;
+                    case 8: geo = new THREE.PlaneGeometry(2.5, 2.5, 4, 4); count = 4; break;
+                    case 9: geo = new THREE.IcosahedronGeometry(0.4, 0); count = 20; break;
+                    case 10: geo = new THREE.CylinderGeometry(1.2, 1.2, 0.05, 12); break;
+                    case 11: geo = new THREE.TorusKnotGeometry(0.4, 0.15, 60, 10); break;
+                    case 12: geo = new THREE.TorusGeometry(0.6, 0.2, 3, 3); break;
+                    case 13: geo = new THREE.TorusGeometry(1.2, 0.01, 6, 32); break;
+                    case 14: geo = new THREE.TorusKnotGeometry(0.6, 0.25, 20, 6); break;
+                    case 15: geo = new THREE.SphereGeometry(1.7, 8, 6); break;
                     case 16: geo = new THREE.TorusGeometry(0.7, 0.25, 4, 4); break;
-                    case 17: geo = new THREE.PlaneGeometry(0.02, 3, 1); count = 40; break;
+                    case 17: geo = new THREE.PlaneGeometry(0.02, 3, 1); count = 35; break;
                 }
+
                 for(let j=0; j<count; j++) {
-                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true, vertexColors: useVertexColor}));
+                    // 各パターンでマテリアルの質感を変える
+                    const mat = new THREE.MeshBasicMaterial({...matParams});
+                    // 点線風のエフェクト（一部パターンのみ）
+                    if([2, 7, 13, 17].includes(i)) mat.wireframe = false; 
+
+                    const m = new THREE.Mesh(geo, mat);
                     const seed = i * 13 + j * 7;
-                    if(i===8) {
-                        const dist = 5;
-                        if(j===0) m.position.set(0,0,-dist); if(j===1) m.position.set(0,0,dist);
-                        if(j===2) m.position.set(-dist,0,0); if(j===3) m.position.set(dist,0,0);
-                    } else if(i!==15) {
-                        m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
-                    }
-                    m.userData = { syncType: j % 8, offset: seed, speedMult: 0.8 + Math.random() };
+                    if(i!==8 && i!==15) m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
+                    
+                    m.userData = { 
+                        syncType: j % 8, 
+                        offset: seed, 
+                        speedMult: 0.8 + Math.random(),
+                        // パターンごとにカクカクの度合い（ステップ数）を変える
+                        steps: (i % 5) + 3 
+                    };
                     group.add(m);
                 }
                 group.visible = false; patterns.push(group); mainGroup.add(group);
@@ -106,11 +108,15 @@
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement); document.getElementById('arBtn').style.display = 'none';
-                scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                mainGroup = new THREE.Group(); scene.add(mainGroup); setup();
-                xrRefSpace = await session.requestReferenceSpace('local'); await renderer.xr.setSession(session);
-                renderer.setAnimationLoop(render); document.getElementById('audio').play().catch(()=>{});
+                document.body.appendChild(renderer.domElement);
+                document.getElementById('arBtn').style.display = 'none';
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+                mainGroup = new THREE.Group(); scene.add(mainGroup);
+                setup();
+                xrRefSpace = await session.requestReferenceSpace('local');
+                await renderer.xr.setSession(session);
+                renderer.setAnimationLoop(render);
             } catch (e) { alert(e.message); }
         }
 
@@ -118,11 +124,12 @@
             if (!xrRefSpace || !frame) return;
             const d = window.mD; 
             beatAcc += (0.01 + d.beat * 0.15); 
-            hue += 0.003 + (d.centroid * 0.015);
+            hue += 0.003 + (d.centroid * 0.01);
 
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 17; patterns[currentIdx].visible = true;
+                currentIdx = (currentIdx + 1) % 17;
+                patterns[currentIdx].visible = true;
                 nextSwitch = Date.now() + 8000;
             }
 
@@ -131,61 +138,35 @@
 
             patterns[currentIdx].children.forEach((p, j) => {
                 if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
-                const types = [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan];
-                const val = types[p.userData.syncType] || 0.1;
+                const val = [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan][p.userData.syncType] || 0.1;
                 const idx = currentIdx + 1;
 
-                // 4番: 構造物ごとに色を完全に変える
-                if(idx === 4) {
-                    _color.setHSL((j/50 + hue)%1, 1, 0.5 + d.rms*0.3);
-                    p.material.color.copy(_color);
-                } else {
-                    _color.setHSL((hue + p.userData.offset + val*0.3)%1, 0.9, 0.4 + d.rms * 0.4);
-                    p.material.color.copy(_color);
-                }
-                p.material.opacity = 0.3 + d.rms * 0.7;
+                // 質感の差別化: パターンごとに明暗・濃淡を制御
+                const brightness = idx % 2 === 0 ? 0.6 : 0.3;
+                _color.setHSL((hue + p.userData.offset + val*0.3)%1, 0.8, brightness + d.rms * 0.4);
+                p.material.color.copy(_color);
+                
+                // 線の質感（太さの擬似表現：スケール連動）
+                p.material.opacity = (idx % 3 === 0) ? 0.4 : 0.8 * d.rms;
 
                 // スケール
-                let s = 0.5 + val * 3.5;
-                if(idx === 9) s = (0.5 + Math.random()*1.5) + val * 2.5;
-                if(idx === 15) s *= 1.2;
-                p.scale.setScalar(Math.max(0.1, s));
+                p.scale.setScalar(Math.max(0.1, 0.5 + val * 3.5));
 
-                // 「カクカク回転」の実装 (Step Rotation)
-                // 低域(キック)に合わせて回転角をスナップさせる
-                const step = Math.floor(beatAcc * 4 + d.low * 10) * (Math.PI / 4);
-                const stepRotateIdx = [1,2,3,4,6,7,8,11,12,13,15,16];
+                // カクカク度合いの個別化
+                // 3ステップ（荒い）から8ステップ（細かい）までパターンごとに分散
+                const stepCount = p.userData.steps;
+                const step = Math.floor(beatAcc * stepCount + d.low * 5) * (Math.PI * 2 / stepCount);
 
+                const stepRotateIdx = [1,2,3,4,6,7,11,12,13,14,15,16];
                 if(stepRotateIdx.includes(idx)) {
                     p.rotation.y = step * p.userData.speedMult;
                     p.rotation.z = step * 0.5;
                 } else {
-                    p.rotation.y += (0.02 + d.flux * 0.5);
+                    p.rotation.y += (0.02 + d.flux * 0.4);
                 }
 
-                // 8番: 眼の前に向かってくる
-                if(idx === 8) {
-                    const speed = 0.02 + d.low * 0.2;
-                    if(j===0) p.position.z += speed; if(j===1) p.position.z -= speed;
-                    if(j===2) p.position.x += speed; if(j===3) p.position.x -= speed;
-                    if(Math.abs(p.position.z) > 6 || Math.abs(p.position.x) > 6) {
-                        const dist = 5;
-                        if(j===0) p.position.z = -dist; if(j===1) p.position.z = dist;
-                        if(j===2) p.position.x = -dist; if(j===3) p.position.x = dist;
-                    }
-                    p.lookAt(camera.position);
-                }
-
-                // 10番: 全要素に反応
-                if(idx === 10) {
-                    p.scale.y = 0.1 + d.high * 5;
-                    p.rotation.x = d.mid * Math.PI;
-                    p.position.y = Math.sin(beatAcc + j) * d.rms * 2;
-                }
-
-                // 17番: カクカク移動
                 if(idx === 17) {
-                    const stepPos = Math.floor(j * 0.15 + beatAcc * 5 + d.low * 5);
+                    const stepPos = Math.floor(j * 0.1 + beatAcc * 4 + d.low * 4);
                     p.position.x = (stepPos % 6) - 3;
                     p.scale.y = 1 + Math.sin(beatAcc * 4 + j) * d.rms * 6;
                 }
