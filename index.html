@@ -2,21 +2,21 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V40 - ULTIMATE GEOMETRY</title>
+    <title>PSY-AR V41 - FINAL STABLE</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        #arBtn { padding: 30px 50px; font-size: 20px; background: #fff; border-radius: 40px; cursor: pointer; border: none; font-weight: bold; z-index: 1000; }
+        #arBtn { padding: 35px 55px; font-size: 22px; background: #00ff00; color: #000; border-radius: 50px; cursor: pointer; border: none; font-weight: bold; z-index: 1000; box-shadow: 0 0 20px #0f0; }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V40</button>
+    <button id="arBtn">START AR SESSION V41</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, mainGroup, xrRefSpace;
+        let scene, camera, renderer, mainGroup, xrSession;
         let patterns = [];
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
@@ -29,46 +29,43 @@
         });
 
         function setup() {
-            // 新・幾何学10種 (V40エディション)
             const geoms = [
-                new THREE.TorusKnotGeometry(0.6, 0.005, 200, 16, 3, 4), // 0: デジタル・シルク
-                new THREE.OctahedronGeometry(1.2, 0),                 // 1: 虚空のダイヤモンド
-                new THREE.TorusGeometry(0.8, 0.2, 3, 3),              // 2: 浮遊するピラミッド・リング
-                new THREE.BoxGeometry(2, 2, 0.01),                    // 3: 空間のスライス・パネル
-                new THREE.IcosahedronGeometry(0.5, 5),                // 4: 幾何学の星雲
-                new THREE.CylinderGeometry(0.01, 0.01, 5, 8),         // 5: 無限の垂直線
-                new THREE.TorusGeometry(0.5, 0.3, 16, 100),           // 6: サイケデリック・ドーナツ
-                new THREE.TetrahedronGeometry(0.4, 0),                // 7: 浮遊する四面体
-                new THREE.TorusKnotGeometry(0.5, 0.1, 64, 8, 2, 5),   // 8: 重なり合う龍の尾
-                new THREE.SphereGeometry(1, 16, 8)                    // 9: デジタル・ケージ
+                new THREE.TorusKnotGeometry(0.6, 0.01, 150, 20), // 0
+                new THREE.OctahedronGeometry(1, 0),             // 1
+                new THREE.TorusGeometry(0.8, 0.2, 4, 4),        // 2
+                new THREE.BoxGeometry(2, 2, 0.01),              // 3
+                new THREE.IcosahedronGeometry(0.5, 4),          // 4
+                new THREE.CylinderGeometry(0.01, 0.01, 5, 8),   // 5
+                new THREE.TorusGeometry(0.6, 0.2, 16, 100),     // 6
+                new THREE.TetrahedronGeometry(0.5, 0),          // 7
+                new THREE.TorusKnotGeometry(0.5, 0.1, 64, 8),   // 8
+                new THREE.SphereGeometry(1.2, 12, 6)            // 9
             ];
 
             for(let i=0; i<10; i++) {
-                const group = new THREE.Group();
-                let count = (i === 3 || i === 5) ? 40 : 25;
-                for(let j=0; j<count; j++) {
+                const g = new THREE.Group();
+                for(let j=0; j<25; j++) {
                     const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
-                    m.position.set((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5);
-                    m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
-                    group.add(m);
+                    m.position.set((Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5);
+                    g.add(m);
                 }
-                group.visible = false;
-                patterns.push(group);
-                mainGroup.add(group);
+                g.visible = false;
+                patterns.push(g);
+                mainGroup.add(g);
             }
             patterns[0].visible = true;
         }
 
         async function start() {
+            // エラーを避けるため、既存セッションがあれば終了
+            if (xrSession) { try { await xrSession.end(); } catch(e){} }
+
             try {
-                // エラーの主因である local-floor を排除し、最も安全な local を使用
-                const session = await navigator.xr.requestSession('immersive-ar', { 
-                    requiredFeatures: ['local'] 
-                });
-                
+                xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['local'] });
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
                 renderer.xr.enabled = true;
-                await renderer.xr.setSession(session);
+                await renderer.xr.setSession(xrSession);
+                
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
 
@@ -78,7 +75,6 @@
                 scene.add(mainGroup);
                 setup();
 
-                xrRefSpace = await session.requestReferenceSpace('local');
                 document.getElementById('audio').play().catch(()=>{});
 
                 renderer.setAnimationLoop((t, frame) => {
@@ -97,11 +93,8 @@
 
                     patterns[currentIdx].children.forEach((p, i) => {
                         p.rotation.y += 0.01 + d.high;
-                        p.scale.setScalar(0.7 + d.low * 2.3);
+                        p.scale.setScalar(0.7 + d.low * 2.5);
                         p.material.color.setHSL((hue + i/25)%1, 1, 0.5);
-                        p.material.opacity = 0.3 + d.low * 0.7;
-
-                        if(currentIdx === 5) p.rotation.z += d.mid * 0.1; // 垂直線のスピン
                     });
                     renderer.render(scene, camera);
                 });
