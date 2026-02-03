@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V63 - FIX VISIBILITY</title>
+    <title>PSY-AR V64 - STABLE SYNC</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -11,12 +11,12 @@
         }
         #valDisplay {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace;
+            color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; z-index: 1001;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYNC FIX V63</button>
+    <button id="arBtn">START SYNC FIX V64</button>
     <div id="valDisplay">LATENCY: <span id="latVal">0.25</span>s</div>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
@@ -29,15 +29,15 @@
         let remoteStream = null;
         let group, blockL, blockR, centerLine;
         
-        // --- 調整用：ここを変更 ---
+        // --- 調整用：音と映像のズレを感じたらここを書き換えてください ---
         let currentDelay = 0.25; 
-        // -----------------------
+        // ---------------------------------------------------------
 
-        window.mD = { rms: 0, low: 0 };
+        window.mD = { rms: 0 }; // 音量のみを使用
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
-            c.on('data', d => { if(d) for(let k in window.mD) window.mD[k]=d[k]; });
+            c.on('data', d => { if(d) window.mD.rms = d.rms || 0; });
         });
 
         peer.on('call', call => {
@@ -65,16 +65,21 @@
             group = new THREE.Group();
             scene.add(group);
 
-            // 衝突ブロック（絶対に画面外に行かないよう範囲制限）
-            const geo = new THREE.BoxGeometry(0.05, 0.3, 0.05);
+            // 衝突ブロック
+            const geo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
             blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            
+            // 初期位置を固定
+            blockL.position.x = -0.5;
+            blockR.position.x = 0.5;
+            
             group.add(blockL);
             group.add(blockR);
 
-            // センターライン
+            // センター判定ライン
             centerLine = new THREE.Mesh(
-                new THREE.BoxGeometry(0.01, 0.4, 0.01),
+                new THREE.BoxGeometry(0.02, 0.6, 0.02),
                 new THREE.MeshBasicMaterial({color: 0xffffff})
             );
             group.add(centerLine);
@@ -86,7 +91,7 @@
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.setPixelRatio(1); // 負荷軽減
+                renderer.setPixelRatio(1);
                 renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
@@ -102,34 +107,36 @@
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
-            const d = window.mD;
-
-            // カメラの正面1m先に固定
-            const head = camera.position;
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            group.position.copy(head).add(dir.multiplyScalar(1.0));
-            group.lookAt(head); // 常に自分の方を向く
-
-            // --- 修正された同期ロジック ---
-            // rmsを0〜1にクランプ（制限）して、突き抜けを防止
-            const intensity = Math.min(1.0, d.rms * 6.0);
             
-            // 待機位置は 0.4、音が最大で 0 (衝突)
-            const posX = 0.4 * (1.0 - intensity);
+            // カメラの正面 1.2m に常に固定
+            const headPos = new THREE.Vector3();
+            const headQuat = new THREE.Quaternion();
+            camera.getWorldPosition(headPos);
+            camera.getWorldQuaternion(headQuat);
             
-            // スムーズな動きのために線形補間を使用
-            blockL.position.x = THREE.MathUtils.lerp(blockL.position.x, -posX, 0.4);
-            blockR.position.x = THREE.MathUtils.lerp(blockR.position.x, posX, 0.4);
+            const offset = new THREE.Vector3(0, 0, -1.2).applyQuaternion(headQuat);
+            group.position.copy(headPos).add(offset);
+            group.quaternion.copy(headQuat);
 
-            // 衝突の瞬間に発光
-            if (intensity > 0.5) {
+            // 音量（rms）を取得し、0〜1の範囲に正規化
+            let vol = window.mD.rms * 8.0; // 感度調整
+            if (vol > 1.0) vol = 1.0; 
+            if (vol < 0) vol = 0;
+
+            // --- 重要：移動範囲を -0.5 から 0 に制限 ---
+            // 音が最大(vol=1)のとき、x=0 (中央) になる。
+            const currentX = 0.5 * (1.0 - vol);
+            
+            blockL.position.x = -currentX;
+            blockR.position.x = currentX;
+
+            // 衝突時の色変化（視覚的フィードバック）
+            if (vol > 0.5) {
                 blockL.material.color.set(0xffffff);
                 blockR.material.color.set(0xffffff);
-                centerLine.scale.y = 1.5;
             } else {
                 blockL.material.color.set(0x00ff00);
                 blockR.material.color.set(0x00ff00);
-                centerLine.scale.y = 1.0;
             }
 
             renderer.render(scene, camera);
