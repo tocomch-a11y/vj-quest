@@ -2,74 +2,90 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>SENDER - RMS FIX</title>
+    <title>SENDER V67 - AUDIO SYNC</title>
 </head>
-<body>
-    <h2>SENDER (RMS FIX)</h2>
-    <button id="startBtn" style="padding:20px; font-size:18px;">1. START & CONNECT</button>
-    <div id="status" style="margin-top:20px; font-family:monospace; color:blue;">STATUS: IDLE</div>
-    <div id="debug" style="margin-top:10px; font-size:24px; font-weight:bold;">RMS: 0.000</div>
+<body style="font-family:sans-serif; padding:20px;">
+    <h2>SENDER V67</h2>
+    
+    <div style="background:#eee; padding:15px; border-radius:10px;">
+        <p>1. 受信機(Quest)と接続します</p>
+        <button id="btn1" style="padding:15px;">1. CONNECT TO QUEST</button>
+    </div>
+
+    <br>
+
+    <div style="background:#f9f9f9; padding:15px; border-radius:10px;">
+        <p>2. 時報音源（MP3等）を選択して再生・解析開始</p>
+        <input type="file" id="fileInput" accept="audio/*"><br><br>
+        <button id="btn2" style="padding:15px; background:#4CAF50; color:white;">2. PLAY & ANALYZE</button>
+    </div>
+
+    <div id="status" style="margin-top:20px; color:blue; font-weight:bold;">STATUS: IDLE</div>
+    <div id="rmsDisplay" style="font-size:40px; font-family:monospace; margin-top:20px;">RMS: 0.000</div>
 
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         const peer = new Peer('pc-sender');
-        let conn, audioCtx, analyser, dataArray;
-        let isConnecting = false;
+        let conn, audioCtx, analyser, dataArray, source;
+        const audioTag = new Audio();
 
-        async function startSystem() {
-            try {
-                // マイク・音声取得
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                document.getElementById('status').innerText = "STATUS: MIC OK. CONNECTING...";
+        // ボタン1: 接続
+        document.getElementById('btn1').onclick = () => {
+            conn = peer.connect('quest-receiver');
+            
+            // 空のストリームを一旦送って通話を確立
+            const canvas = document.createElement('canvas');
+            const dummyStream = canvas.captureStream(); 
+            peer.call('quest-receiver', dummyStream);
 
-                // Peer接続（受信側のID: quest-receiver）
-                conn = peer.connect('quest-receiver');
-                const call = peer.call('quest-receiver', stream);
+            conn.on('open', () => {
+                document.getElementById('status').innerText = "STATUS: CONNECTED TO QUEST";
+            });
+        };
 
-                // --- 音声解析の構築 ---
+        // ボタン2: ファイル再生と解析
+        document.getElementById('btn2').onclick = async () => {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) { alert("ファイルを選択してください"); return; }
+
+            if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioCtx.createMediaStreamSource(stream);
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
-                source.connect(analyser); // マイク音を解析器に接続
-                
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
-                conn.on('open', () => {
-                    document.getElementById('status').innerText = "STATUS: CONNECTED!";
-                    isConnecting = true;
-                    requestAnimationFrame(sendData);
-                });
-
-            } catch (err) {
-                alert("Error: " + err);
             }
-        }
 
-        function sendData() {
-            if (!isConnecting) return;
-
-            // RMS(音量)の計算
-            analyser.getByteTimeDomainData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                let v = (dataArray[i] - 128) / 128;
-                sum += v * v;
-            }
-            let rms = Math.sqrt(sum / dataArray.length);
-
-            // デバッグ表示
-            document.getElementById('debug').innerText = "RMS: " + rms.toFixed(3);
-
-            // Quest側に送信
-            if (conn.open) {
-                conn.send({ rms: rms });
-            }
+            // 前の再生があれば停止
+            audioTag.src = URL.createObjectURL(file);
             
-            requestAnimationFrame(sendData);
-        }
+            if (!source) {
+                source = audioCtx.createMediaElementSource(audioTag);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+            }
 
-        document.getElementById('startBtn').onclick = startSystem;
+            audioTag.play();
+            document.getElementById('status').innerText = "STATUS: PLAYING & ANALYZING";
+            
+            // Questへのデータ送信ループ
+            function loop() {
+                analyser.getByteTimeDomainData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    let v = (dataArray[i] - 128) / 128;
+                    sum += v * v;
+                }
+                let rms = Math.sqrt(sum / dataArray.length);
+                
+                document.getElementById('rmsDisplay').innerText = "RMS: " + rms.toFixed(3);
+                
+                if (conn && conn.open) {
+                    conn.send({ rms: rms });
+                }
+                requestAnimationFrame(loop);
+            }
+            loop();
+        };
     </script>
 </body>
 </html>
