@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
-<body style="background:#111; color:#0f0; text-align:center;">
-    <button id="btn" style="padding:50px; font-size:20px;">START MAC SENDER</button>
+<body style="background:#111; color:#0f0; text-align:center; padding:50px;">
+    <button id="btn" style="padding:40px;">START SENDER</button>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         const peer = new Peer('mac-sender-' + Math.floor(Math.random()*999));
         document.getElementById('btn').onclick = async () => {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+            });
             const ctx = new AudioContext();
             const analyzer = ctx.createAnalyser();
             ctx.createMediaStreamSource(stream).connect(analyzer);
@@ -18,7 +19,7 @@
             conn.on('open', () => {
                 setInterval(() => {
                     analyzer.getByteFrequencyData(data);
-                    conn.send({ low: data[4]/255, mid: data[15]/255, trigger: data[4]>210 });
+                    conn.send({ low: data[4]/255, mid: data[15]/255, trigger: data[4]>215 });
                 }, 20);
             });
         };
