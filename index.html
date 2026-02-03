@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V47 - 17 PATTERNS</title>
+    <title>PSY-AR V48 - MULTI-AUDIO SYNC</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V47</button>
+    <button id="arBtn">START SESSION V48</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -34,29 +34,39 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        // 番号表示用のドット文字データ
-        const numData = [
-            [], // 0 (未使用)
-            [0,1,0,1,1,0,0,1,0,0,1,0,1,1,1], [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1], [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],
-            [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1], [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1],
-            [0,1,0,1,1,1,0,1,0,0,1,0,0,1,0], [0,1,0,1,1,1,0,1,0,0,1,0,1,1,1], [0,1,0,1,1,1,0,1,0,0,1,0,1,1,1],
-            [0,1,0,1,1,1,0,1,0,0,1,0,0,1,1], [0,1,0,1,1,1,0,1,0,1,1,1,0,0,1], [0,1,0,1,1,1,0,1,0,1,0,0,1,1,1],
-            [0,1,0,1,1,1,0,1,0,1,1,1,1,1,1], [0,1,0,1,1,1,0,1,0,0,0,1,0,0,1]
+        // 2桁対応ドットデータ (3x5 grid per digit)
+        const digits = [
+            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], // 0
+            [0,1,0,1,1,0,0,1,0,0,1,0,0,1,0], // 1
+            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], // 2
+            [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1], // 3
+            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], // 4
+            [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1], // 5
+            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], // 6
+            [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1], // 7
+            [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], // 8
+            [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]  // 9
         ];
 
         function createIDLabel(id) {
             const group = new THREE.Group();
-            const data = numData[id] || [];
-            data.forEach((val, i) => {
-                if(val) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set((i%3)*0.02, Math.floor(i/3)*-0.02, 0);
-                    group.add(m);
-                }
-            });
+            const drawDigit = (num, xOff) => {
+                digits[num].forEach((val, i) => {
+                    if(val) {
+                        const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                        m.position.set(xOff + (i%3)*0.02, Math.floor(i/3)*-0.02, 0);
+                        group.add(m);
+                    }
+                });
+            };
+            if(id >= 10) {
+                drawDigit(Math.floor(id/10), -0.04);
+                drawDigit(id%10, 0.04);
+            } else {
+                drawDigit(id, 0);
+            }
             group.name = "ID_LABEL";
-            group.position.set(0.5, 0.5, 0); // 右上に配置
+            group.position.set(0.6, 0.6, 0);
             return group;
         }
 
@@ -64,7 +74,7 @@
             for(let i=1; i<=17; i++) {
                 const group = new THREE.Group();
                 group.add(createIDLabel(i));
-                let geo, count = 25, matType = { wireframe: true, transparent: true };
+                let geo, count = 30, matType = { wireframe: true, transparent: true };
 
                 switch(i) {
                     case 1: geo = new THREE.TorusKnotGeometry(0.8, 0.2, 100, 16); break;
@@ -76,19 +86,22 @@
                     case 7: geo = new THREE.BoxGeometry(0.001, 0.001, 5); count = 100; break;
                     case 8: geo = new THREE.PlaneGeometry(3, 3, 32, 32); count = 1; break;
                     case 9: geo = new THREE.IcosahedronGeometry(0.02, 0); count = 150; break;
-                    case 10: geo = new THREE.CylinderGeometry(1.5, 1.5, 0.01, 64); count = 3; break;
-                    case 11: geo = new THREE.TorusKnotGeometry(0.5, 0.15, 100, 16, 2, 3); count = 5; break;
+                    case 10: geo = new THREE.CylinderGeometry(1.5, 1.5, 0.01, 64); count = 5; break;
+                    case 11: geo = new THREE.TorusKnotGeometry(0.5, 0.15, 100, 16, 2, 3); count = 8; break;
                     case 12: geo = new THREE.TorusGeometry(0.7, 0.2, 4, 4); count = 10; break;
                     case 13: geo = new THREE.TorusGeometry(1.5, 0.001, 8, 100); count = 15; break;
-                    case 14: geo = new THREE.TorusKnotGeometry(0.7, 0.3, 40, 8); count = 3; break;
+                    case 14: geo = new THREE.TorusKnotGeometry(0.7, 0.3, 40, 8); count = 5; break;
                     case 15: geo = new THREE.SphereGeometry(1.5, 16, 8); count = 1; break;
-                    case 16: geo = new THREE.TorusGeometry(0.8, 0.3, 4, 4); count = 10; break;
+                    case 16: geo = new THREE.TorusGeometry(0.8, 0.3, 4, 4); count = 12; break;
                     case 17: geo = new THREE.PlaneGeometry(0.01, 4, 1); count = 60; break;
                 }
 
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial(matType));
                     if(i!==8 && i!==15) m.position.set((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5);
+                    // 個別の性格（音反応タイプ）を割り振り
+                    m.userData.syncType = j % 3; // 0:Low, 1:Mid, 2:High
+                    m.userData.rotSpeed = Math.random() * 0.02;
                     if(i===2 || i===6 || i===7) m.userData.zOffset = j * (10/count);
                     group.add(m);
                 }
@@ -103,14 +116,12 @@
             try {
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
-                renderer.xr.enabled = true;
-                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                mainGroup = new THREE.Group();
-                scene.add(mainGroup);
+                mainGroup = new THREE.Group(); scene.add(mainGroup);
                 setup();
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
@@ -121,45 +132,44 @@
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
-            const d = window.mD;
-            hue += 0.005;
-
+            const d = window.mD; hue += 0.005;
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
                 currentIdx = (currentIdx + 1) % 17;
                 patterns[currentIdx].visible = true;
                 nextSwitch = Date.now() + 8000;
             }
-
             _v.set(0, 0, -2).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, i) => {
                 if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
 
-                _color.setHSL((hue + i/25)%1, 1, 0.5);
+                // 個別の音反応を取得
+                const sType = p.userData.syncType;
+                const val = sType === 0 ? d.low : (sType === 1 ? d.mid : d.high);
+                
+                _color.setHSL((hue + i/30 + val*0.5)%1, 1, 0.5);
                 p.material.color.copy(_color);
                 
                 const idx = currentIdx + 1;
-                // 各パターンの固有演出
-                if(idx === 1) { p.scale.setScalar(0.8 + d.low * 0.1); p.rotation.y += 0.01; }
+                // スケールと回転に個別の音を反映
+                if(idx === 1) {
+                    p.scale.setScalar(0.8 + val * 0.2); 
+                } else if(idx === 8 || idx === 15) {
+                    p.scale.setScalar(1 + d.low * 2); // 巨大系はLow固定
+                } else {
+                    p.scale.setScalar(0.5 + val * 3);
+                }
+
+                p.rotation.y += p.userData.rotSpeed + val * 0.1;
+                p.rotation.z += val * 0.05;
+
+                // 2, 6, 7のワープ演出
                 if(idx === 2 || idx === 6 || idx === 7) {
                     p.position.z = ((p.userData.zOffset + time/1000) % 10) - 5;
-                    p.position.x = Math.sin(i) * 2; p.position.y = Math.cos(i) * 2;
                 }
-                if(idx === 5) { p.rotation.y += 0.02 + d.mid; p.scale.setScalar(0.5 + d.low); }
-                if(idx === 8) { 
-                    p.rotation.x = -Math.PI/2; 
-                    p.geometry.verticesNeedUpdate = true; // 頂点アニメーション用（簡易版）
-                    p.scale.z = 1 + d.low * 3;
-                }
-                if(idx === 9) { p.scale.setScalar(0.5 + d.low * 4); }
-                if(idx === 10) { p.rotation.y += 0.01 + d.low; p.rotation.x = Math.PI/2; }
-                if(idx === 17) { p.position.x = ((i * 0.2 + time/2000) % 6) - 3; }
-
-                // 基本の音反応
-                if(idx !== 1) p.scale.setScalar(0.7 + d.low * 2);
-                p.rotation.y += 0.01 + d.high;
+                if(idx === 17) p.position.x = ((i * 0.2 + time/2000) % 6) - 3;
             });
             renderer.render(scene, camera);
         }
