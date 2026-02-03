@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V51 - HYPER SENSITIVE</title>
+    <title>PSY-AR V52 - BPM SYNC</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V51</button>
+    <button id="arBtn">START SESSION V52</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -24,18 +24,13 @@
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let patterns = [];
         window.mD = { low:0.1, mid:0.1, high:0.1, rms:0.2, beat:0, centroid:0.5, flux:0, pan:0 };
-        let currentIdx = 0, nextSwitch = 0, hue = 0;
+        let currentIdx = 0, nextSwitch = 0, hue = 0, beatAcc = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
-            c.on('data', d => {
-                if(d) {
-                    for(let key in window.mD) if(d[key] !== undefined) window.mD[key] = d[key];
-                }
-            });
+            c.on('data', d => { if(d) for(let k in window.mD) if(d[k]!==undefined) window.mD[k]=d[k]; });
         });
-
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
@@ -51,23 +46,18 @@
 
         function createIDLabel(id) {
             const group = new THREE.Group();
-            const drawDigit = (n, xOff) => {
-                digits[n].forEach((v, i) => { if(v) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set(xOff + (i%3)*0.02, Math.floor(i/3)*-0.02, 0);
-                    group.add(m);
-                }});
-            };
+            const drawDigit = (n, x) => digits[n].forEach((v, i) => { if(v) {
+                const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                m.position.set(x + (i%3)*0.02, Math.floor(i/3)*-0.02, 0); group.add(m);
+            }});
             if(id >= 10) { drawDigit(Math.floor(id/10), -0.04); drawDigit(id%10, 0.04); }
             else { drawDigit(id, 0); }
-            group.name = "ID_LABEL"; group.position.set(0.6, 0.6, 0);
-            return group;
+            group.name = "ID_LABEL"; group.position.set(0.6, 0.6, 0); return group;
         }
 
         function setup() {
             for(let i=1; i<=17; i++) {
-                const group = new THREE.Group();
-                group.add(createIDLabel(i));
+                const group = new THREE.Group(); group.add(createIDLabel(i));
                 let geo, count = 30;
                 switch(i) {
                     case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 100, 16); break;
@@ -88,19 +78,12 @@
                     case 16: geo = new THREE.TorusGeometry(0.7, 0.25, 4, 4); break;
                     case 17: geo = new THREE.PlaneGeometry(0.01, 3, 1); count = 50; break;
                 }
-
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true}));
                     const seed = i * 13 + j * 7;
                     m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
                     m.rotation.set(seed, seed, 0);
-                    // j < 2 の場合のみ「無反応(静止)」フラグを立てる
-                    m.userData = { 
-                        syncType: j % 8, 
-                        isStatic: (j < 2 && count > 5), 
-                        offset: seed, 
-                        speed: 0.01 + (j % 5) * 0.005 
-                    };
+                    m.userData = { syncType: j % 8, isStatic: (j < 2 && count > 5), offset: seed, speedMult: 1 + Math.random() };
                     group.add(m);
                 }
                 group.visible = false; patterns.push(group); mainGroup.add(group);
@@ -113,29 +96,24 @@
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement);
-                document.getElementById('arBtn').style.display = 'none';
-                scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                mainGroup = new THREE.Group(); scene.add(mainGroup);
-                setup();
-                xrRefSpace = await session.requestReferenceSpace('local');
-                await renderer.xr.setSession(session);
-                renderer.setAnimationLoop(render);
-                document.getElementById('audio').play().catch(()=>{});
+                document.body.appendChild(renderer.domElement); document.getElementById('arBtn').style.display = 'none';
+                scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+                mainGroup = new THREE.Group(); scene.add(mainGroup); setup();
+                xrRefSpace = await session.requestReferenceSpace('local'); await renderer.xr.setSession(session);
+                renderer.setAnimationLoop(render); document.getElementById('audio').play().catch(()=>{});
             } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             const d = window.mD; 
-            // 変化感度20%アップ
+            // 拍動(beat)を時間軸に蓄積してBPM同期タイマーを作成
+            beatAcc += (0.01 + d.beat * 0.1); 
             hue += 0.003 + (d.centroid * 0.015);
 
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 17;
-                patterns[currentIdx].visible = true;
+                currentIdx = (currentIdx + 1) % 17; patterns[currentIdx].visible = true;
                 nextSwitch = Date.now() + 8000;
             }
 
@@ -145,30 +123,30 @@
             patterns[currentIdx].children.forEach((p, j) => {
                 if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
 
-                // 静止オブジェクト以外は音に反応
-                const val = p.userData.isStatic ? 0.1 : ( [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan][p.userData.syncType] || 0.1 );
+                const val = p.userData.isStatic ? 0.1 : ([d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan][p.userData.syncType] || 0.1);
 
-                // 1. カラー (輝度と彩度をさらに強調)
                 _color.setHSL((hue + p.userData.offset + val*0.3)%1, 0.9, 0.4 + d.rms * 0.4);
                 p.material.color.copy(_color);
                 p.material.opacity = p.userData.isStatic ? 0.2 : 0.3 + d.rms * 0.7;
 
-                // 2. スケール (感度20%UP: 2.5 -> 3.0)
-                const s = Math.max(0.1, 0.5 + val * 3.0 + (d.beat * 1.0));
-                p.scale.setScalar(s);
+                // スケールはBPMの拍(beatAcc)のサイン波で脈打つ
+                const beatPulse = Math.sin(beatAcc * 2) * 0.2 * d.beat;
+                p.scale.setScalar(Math.max(0.1, 0.5 + val * 3.0 + beatPulse));
 
-                // 3. 回転 (Flux感度も向上)
-                p.rotation.y += p.userData.speed + (p.userData.isStatic ? 0 : d.flux * 0.4);
-                p.rotation.z += (p.userData.isStatic ? 0 : val * 0.15);
+                // 回転をBPM(beatAcc)に同期
+                p.rotation.y += (0.02 + d.flux * 0.4) * p.userData.speedMult;
+                if(!p.userData.isStatic) p.rotation.z = beatAcc * p.userData.speedMult + (val * 0.5);
 
-                // 定位(Pan)の反応距離もアップ
+                // ワープ・移動演出をBPM同期の移動に変更
+                const idx = currentIdx + 1;
+                if(idx === 2 || idx === 6 || idx === 7) {
+                    // timeではなくbeatAccを基準に移動させることで、リズムに合わせた進み方になる
+                    p.position.z = ((p.userData.offset + beatAcc * 2) % 10) - 5;
+                }
+                if(idx === 17) p.position.x = ((j * 0.15 + beatAcc * 3 + d.pan) % 6) - 3;
                 if(!p.userData.isStatic && p.userData.syncType === 7) {
                     p.position.x = Math.sin(p.userData.offset) * 2 + (d.pan * 3.0);
                 }
-
-                const idx = currentIdx + 1;
-                if(idx === 8) p.scale.y = Math.max(0.1, 1 + d.low * 7);
-                if(idx === 17) p.position.x = ((j * 0.15 + time/1000 + d.pan) % 6) - 3;
             });
             renderer.render(scene, camera);
         }
