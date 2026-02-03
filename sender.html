@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html>
 <body style="background:#111; color:white; font-family:sans-serif; text-align:center; padding:50px;">
-    <h1>Mac Processor (Send to Quest)</h1>
-    <button id="btn" style="padding:25px; font-size:20px; cursor:pointer;">1. START SENDER</button>
-    <p id="status">Questを待機中...</p>
+    <h1>MAC SENDER</h1>
+    <button id="btn" style="padding:25px; font-size:20px; cursor:pointer; background:#00ff00;">1. START & CONNECT</button>
+    <p id="status">Status: Waiting for click</p>
 
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
-        const peer = new Peer('psy-link-stable-mac');
+        const peer = new Peer('mac-sender-' + Math.floor(Math.random()*1000)); // Unique ID for Mac
         let dataConn;
 
         document.getElementById('btn').onclick = async () => {
+            document.getElementById('status').innerText = "Accessing Microphone...";
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
-            // 音響解析
             const ctx = new AudioContext();
             const source = ctx.createMediaStreamSource(stream);
             const analyzer = ctx.createAnalyser();
@@ -21,23 +21,31 @@
             source.connect(analyzer);
             const data = new Uint8Array(analyzer.frequencyBinCount);
 
-            // Questへ発信
-            peer.call('psy-link-stable-quest', stream);
-            dataConn = peer.connect('psy-link-stable-quest');
+            document.getElementById('status').innerText = "Connecting to Quest...";
+            
+            // Call and Data connection to specific Quest ID
+            peer.call('quest-receiver', stream);
+            dataConn = peer.connect('quest-receiver');
 
             dataConn.on('open', () => {
-                document.getElementById('status').innerText = "Streaming and Sending Data!";
+                document.getElementById('status').innerText = "!!! CONNECTED TO QUEST !!!";
                 function loop() {
                     analyzer.getByteFrequencyData(data);
-                    dataConn.send({
-                        low: data[4]/255,
-                        mid: data[15]/255,
-                        high: data[30]/255,
-                        trigger: data[4] > 220
-                    });
+                    if (dataConn.open) {
+                        dataConn.send({
+                            low: data[4]/255,
+                            mid: data[15]/255,
+                            high: data[30]/255,
+                            trigger: data[4] > 200
+                        });
+                    }
                     requestAnimationFrame(loop);
                 }
                 loop();
+            });
+
+            dataConn.on('error', (err) => {
+                document.getElementById('status').innerText = "Connection Error: " + err;
             });
         };
     </script>
