@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V49 - 8-FACTOR SYNC</title>
+    <title>PSY-AR V50 - STABLE SYNC</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V49</button>
+    <button id="arBtn">START SESSION V50</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -23,18 +23,35 @@
     <script>
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let patterns = [];
-        // 8つの音響解析要素を保持
-        window.mD = { low:0, mid:0, high:0, rms:0, beat:0, centroid:0, flux:0, pan:0 };
+        // 初期値を 0 ではなく、動きが見える程度の数値に設定
+        window.mD = { low:0.1, mid:0.1, high:0.1, rms:0.2, beat:0, centroid:0.5, flux:0, pan:0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
         const peer = new Peer('quest-receiver');
-        peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
+        peer.on('connection', c => {
+            console.log("Sender Connected");
+            c.on('data', d => {
+                // 受信データが存在する場合のみ、安全に上書き
+                if(d) {
+                    window.mD.low = d.low ?? 0.1;
+                    window.mD.mid = d.mid ?? 0.1;
+                    window.mD.high = d.high ?? 0.1;
+                    window.mD.rms = d.rms ?? 0.2;
+                    window.mD.beat = d.beat ?? 0;
+                    window.mD.centroid = d.centroid ?? 0.5;
+                    window.mD.flux = d.flux ?? 0;
+                    window.mD.pan = d.pan ?? 0;
+                }
+            });
+        });
+
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
+        // 2桁対応ドットデータ（省略せず17まで表示）
         const digits = [
             [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,1,1,0,0,1,0,0,1,0,0,1,0],
             [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
@@ -45,14 +62,14 @@
 
         function createIDLabel(id) {
             const group = new THREE.Group();
-            const drawDigit = (n, x) => {
+            const drawDigit = (n, xOff) => {
                 digits[n].forEach((v, i) => { if(v) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set(x + (i%3)*0.015, Math.floor(i/3)*-0.015, 0);
+                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                    m.position.set(xOff + (i%3)*0.02, Math.floor(i/3)*-0.02, 0);
                     group.add(m);
                 }});
             };
-            if(id >= 10) { drawDigit(Math.floor(id/10), -0.03); drawDigit(id%10, 0.03); }
+            if(id >= 10) { drawDigit(Math.floor(id/10), -0.04); drawDigit(id%10, 0.04); }
             else { drawDigit(id, 0); }
             group.name = "ID_LABEL"; group.position.set(0.6, 0.6, 0);
             return group;
@@ -63,7 +80,6 @@
                 const group = new THREE.Group();
                 group.add(createIDLabel(i));
                 let geo, count = 30;
-
                 switch(i) {
                     case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 100, 16); break;
                     case 2: geo = new THREE.TorusGeometry(0.5, 0.05, 16, 64); break;
@@ -86,17 +102,10 @@
 
                 for(let j=0; j<count; j++) {
                     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({wireframe:true, transparent:true}));
-                    // 座標をパターンIDとオブジェクトIDで完全にユニーク化
                     const seed = i * 13 + j * 7;
                     m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
                     m.rotation.set(seed, seed, 0);
-                    
-                    // どの解析要素に反応するかをランダム決定
-                    m.userData = {
-                        syncType: j % 8, // 0:Low, 1:Mid, 2:High, 3:RMS, 4:Beat, 5:Centroid, 6:Flux, 7:Pan
-                        offset: seed,
-                        speed: 0.005 + (j % 5) * 0.005
-                    };
+                    m.userData = { syncType: j % 8, offset: seed, speed: 0.01 + (j % 5) * 0.005 };
                     group.add(m);
                 }
                 group.visible = false; patterns.push(group); mainGroup.add(group);
@@ -133,37 +142,32 @@
                 nextSwitch = Date.now() + 8000;
             }
 
-            _v.set(0, 0, -2).applyQuaternion(camera.quaternion).add(camera.position);
+            _v.set(0, 0, -2.2).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, j) => {
                 if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
 
-                // 解析要素の抽出
                 const types = [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan];
-                const val = types[p.userData.syncType];
+                const val = types[p.userData.syncType] || 0.1;
 
-                // 1. カラー反応 (Centroidで輝度、Fluxで変化速度)
                 _color.setHSL((hue + p.userData.offset + val*0.2)%1, 0.8, 0.4 + d.rms * 0.3);
                 p.material.color.copy(_color);
-                p.material.opacity = 0.2 + d.rms * 0.8;
+                p.material.opacity = 0.3 + d.rms * 0.7;
 
-                // 2. スケール反応 (Beatで瞬間的に跳ねる)
-                const s = 0.6 + val * 2 + (d.beat * 0.5);
+                // スケールが 0 にならないよう Math.max で保護
+                const s = Math.max(0.1, 0.5 + val * 2.5 + (d.beat * 0.8));
                 p.scale.setScalar(s);
 
-                // 3. 回転・座標反応 (Panで左右に振れる、Fluxで激しく回転)
-                p.rotation.y += p.userData.speed + d.flux * 0.2;
+                p.rotation.y += p.userData.speed + d.flux * 0.3;
                 p.rotation.z += val * 0.1;
 
-                // 定位(Pan)を座標に反映（-1.0〜1.0）
                 if(p.userData.syncType === 7) {
-                    p.position.x = Math.sin(p.userData.offset) * 2 + (d.pan * 2);
+                    p.position.x = Math.sin(p.userData.offset) * 2 + (d.pan * 2.5);
                 }
 
-                // 特定パターンの個別挙動 (V28踏襲 + 拡張)
                 const idx = currentIdx + 1;
-                if(idx === 8) p.scale.y = 1 + d.low * 5; // サイケデリック膜の波打ち
+                if(idx === 8) p.scale.y = Math.max(0.1, 1 + d.low * 6);
                 if(idx === 17) p.position.x = ((j * 0.15 + time/1000 + d.pan) % 6) - 3;
             });
             renderer.render(scene, camera);
