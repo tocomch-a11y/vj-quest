@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>PSY-AR V76</title>
+<head><meta charset="UTF-8"><title>PSY-AR V77</title>
 <style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }</style>
 </head>
 <body>
-    <button id="arBtn">START SYNC V76</button>
+    <button id="arBtn">START SYNC V77</button>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -12,8 +12,8 @@
     <script>
         let scene, camera, renderer, xrRefSpace, blockL, blockR, mainGroup;
         let audioCtx, delayNode, streamSource;
-        let targetVal = 0; // 届いた最新値
-        let currentDisplayVal = 0; // 現在の表示値（これを滑らかに動かす）
+        let targetVal = 0; 
+        let currentDisplayVal = 0; 
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
@@ -64,22 +64,24 @@
                     mainGroup.quaternion.copy(new THREE.Quaternion().setFromRotationMatrix(m4));
                 }
 
-                // --- 滑らか補間ロジック ---
-                // currentDisplayVal を targetVal に向かって毎フレーム 20% ずつ近づける
-                currentDisplayVal += (targetVal - currentDisplayVal) * 0.2;
+                // --- 補間ロジック ---
+                // currentDisplayVal を targetVal に向かって滑らかに動かす
+                currentDisplayVal += (targetVal - currentDisplayVal) * 0.3;
 
                 const val = Math.min(1.0, currentDisplayVal * 1.5);
                 const x = 0.4 * (1.0 - val);
                 blockL.position.x = -x;
                 blockR.position.x = x;
 
-                // 色の反応
-                blockL.material.color.set(val > 0.6 ? 0xffffff : 0x00ff00);
-                blockR.material.color.set(val > 0.6 ? 0xffffff : 0x00ff00);
+                // 衝突時の色変化
+                const color = val > 0.6 ? 0xffffff : 0x00ff00;
+                blockL.material.color.set(color);
+                blockR.material.color.set(color);
 
                 renderer.render(scene, camera);
-                // 一定時間データが来なかったら自然に減衰させる
-                targetVal *= 0.9; 
+                
+                // データが来ないときに自然に0に近づける（1フレームごとに4%減衰）
+                targetVal *= 0.96; 
             });
         }
         document.getElementById('arBtn').onclick = start;
