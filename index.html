@@ -2,23 +2,21 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V61 - PRECISION SYNC</title>
+    <title>PSY-AR V62 - SMOOTH SYNC</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
+        body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px; font-size: 20px; font-weight: bold;
-            background: #00ff00; color: #000; border: none; cursor: pointer; z-index: 1000;
+            padding: 30px; font-size: 20px; font-weight: bold; background: #00ff00; border: none; z-index: 1000;
         }
         #valDisplay {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            color: #0f0; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0;
-            font-size: 24px; pointer-events: none;
+            color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYNC TEST V61</button>
+    <button id="arBtn">START SMOOTH TEST V62</button>
     <div id="valDisplay">LATENCY: <span id="latVal">0.25</span>s</div>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
@@ -26,15 +24,16 @@
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace, mainGroup;
+        let scene, camera, renderer, xrRefSpace;
         let audioCtx, delayNode, streamSource;
         let remoteStream = null;
-        let blockL, blockR, centerLine, flashMesh;
+        let group, blockL, blockR, bar;
         
-        // 調整用変数
+        // --- 調整用：ここを変更 ---
         let currentDelay = 0.25; 
+        // -----------------------
 
-        window.mD = { low:0, rms:0, beat:0 };
+        window.mD = { rms: 0, beat: 0, low: 0 };
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
@@ -52,7 +51,7 @@
 
         function connectStream(stream) {
             if (streamSource) streamSource.disconnect();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            audioCtx.resume();
             streamSource = audioCtx.createMediaStreamSource(stream);
             if (!delayNode) {
                 delayNode = audioCtx.createDelay(1.0);
@@ -63,26 +62,29 @@
         }
 
         function setup() {
-            mainGroup = new THREE.Group();
-            scene.add(mainGroup);
+            group = new THREE.Group();
+            scene.add(group);
 
-            // 1. 中央の判定ライン
-            const lineGeo = new THREE.BoxGeometry(0.01, 0.8, 0.01);
-            centerLine = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({color: 0xffffff}));
-            mainGroup.add(centerLine);
+            // 背景バー
+            bar = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.2, 0.02),
+                new THREE.MeshBasicMaterial({color: 0x333333})
+            );
+            group.add(bar);
 
-            // 2. 左右の衝突ブロック
-            const blockGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-            blockL = new THREE.Mesh(blockGeo, new THREE.MeshBasicMaterial({color: 0xff0000}));
-            blockR = new THREE.Mesh(blockGeo, new THREE.MeshBasicMaterial({color: 0xff0000}));
-            mainGroup.add(blockL);
-            mainGroup.add(blockR);
+            // 衝突ブロック（縦長のバーに変更して視認性UP）
+            const geo = new THREE.BoxGeometry(0.04, 0.4, 0.04);
+            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            group.add(blockL);
+            group.add(blockR);
 
-            // 3. 背景のフラッシュ面
-            const flashGeo = new THREE.PlaneGeometry(2, 2);
-            flashMesh = new THREE.Mesh(flashGeo, new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0}));
-            flashMesh.position.z = -0.1;
-            mainGroup.add(flashMesh);
+            // センター判定ライン
+            const center = new THREE.Mesh(
+                new THREE.BoxGeometry(0.01, 0.5, 0.01),
+                new THREE.MeshBasicMaterial({color: 0xffffff})
+            );
+            group.add(center);
         }
 
         async function start() {
@@ -91,7 +93,8 @@
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
                 scene = new THREE.Scene();
@@ -108,33 +111,30 @@
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
 
-            const targetPos = new THREE.Vector3(0, 0, -1.2).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(targetPos, 0.2);
-            mainGroup.lookAt(camera.position);
+            // カメラの前に固定（カクつき防止のため補間を弱めるか、固定値を計算）
+            const head = camera.position;
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            group.position.copy(head).add(dir.multiplyScalar(1.0));
+            group.quaternion.copy(camera.quaternion);
 
-            // --- 同期ロジック ---
-            // 拍(beat)や低域(low)に反応して、ブロックが中央へ「衝突」する
-            // 戻る動きはゆっくり、叩く動きは鋭く
-            const impact = Math.pow(d.beat, 0.5) || Math.pow(d.low, 0.5); 
+            // --- スムーズな衝突アニメーション ---
+            // rms(音量)をベースに、0.0〜1.0の範囲でブロックを移動
+            // 音が大きくなるほど x が 0 に近づく（衝突）
+            const targetX = 0.5 * Math.max(0, 1.0 - (d.rms * 5.0)); 
             
-            // ブロックの位置計算 (0で衝突)
-            const offsetX = 0.4 * (1.0 - impact);
-            blockL.position.set(-offsetX, 0, 0);
-            blockR.position.set(offsetX, 0, 0);
+            // 線形補間(lerp)を使用して動きを滑らかに
+            blockL.position.x = THREE.MathUtils.lerp(blockL.position.x, -targetX, 0.3);
+            blockR.position.x = THREE.MathUtils.lerp(blockR.position.x, targetX, 0.3);
 
-            // 衝突した瞬間に色を変える
-            if (impact > 0.8) {
-                blockL.material.color.setHex(0xffffff);
-                blockR.material.color.setHex(0xffffff);
-                flashMesh.material.opacity = d.rms * 0.5;
+            // 衝突の瞬間（ピッのピーク）に色を白く光らせる
+            const flash = d.rms > 0.15 ? 1 : 0;
+            if(flash) {
+                blockL.material.color.set(0xffffff);
+                blockR.material.color.set(0xffffff);
             } else {
-                blockL.material.color.setHex(0xff0000);
-                blockR.material.color.setHex(0xff0000);
-                flashMesh.material.opacity *= 0.8;
+                blockL.material.color.set(0x00ff00);
+                blockR.material.color.set(0x00ff00);
             }
-
-            // 正報(ポーン)などの長い音は中央ラインの高さで表現
-            centerLine.scale.y = 1.0 + d.rms * 2.0;
 
             renderer.render(scene, camera);
         }
