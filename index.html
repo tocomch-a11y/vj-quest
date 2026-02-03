@@ -1,10 +1,15 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>PSY-AR V77</title>
-<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }</style>
+<head><meta charset="UTF-8"><title>QUEST V78 - LATENCY ADJUST</title>
+<style>
+    body { margin: 0; background: #000; overflow: hidden; } 
+    #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }
+    #ui { position: fixed; top: 10px; right: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; z-index: 1001; font-family: monospace; }
+</style>
 </head>
 <body>
-    <button id="arBtn">START SYNC V77</button>
+    <div id="ui">Delay: <span id="delayVal">0.25</span>s (Adjust in code)</div>
+    <button id="arBtn">START VR V78</button>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -12,12 +17,12 @@
     <script>
         let scene, camera, renderer, xrRefSpace, blockL, blockR, mainGroup;
         let audioCtx, delayNode, streamSource;
-        let targetVal = 0; 
-        let currentDisplayVal = 0; 
+        let currentL = 0;
+        const DELAY_SEC = 0.25; // ★ここを 0.1 や 0.4 に変えて調整してください★
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
-            c.on('data', d => { if(d && d.l !== undefined) targetVal = d.l; });
+            c.on('data', d => { if(d && d.l !== undefined) currentL = d.l; });
         });
         peer.on('call', call => {
             call.answer(new MediaStream());
@@ -30,10 +35,11 @@
         function connectAudio(stream) {
             audioCtx.resume();
             streamSource = audioCtx.createMediaStreamSource(stream);
-            delayNode = audioCtx.createDelay(1.0);
-            delayNode.delayTime.value = 0.25; 
+            delayNode = audioCtx.createDelay(2.0); // 最大2秒まで
+            delayNode.delayTime.value = DELAY_SEC; 
             streamSource.connect(delayNode);
             delayNode.connect(audioCtx.destination);
+            document.getElementById('delayVal').innerText = DELAY_SEC;
         }
 
         async function start() {
@@ -64,24 +70,21 @@
                     mainGroup.quaternion.copy(new THREE.Quaternion().setFromRotationMatrix(m4));
                 }
 
-                // --- 補間ロジック ---
-                // currentDisplayVal を targetVal に向かって滑らかに動かす
-                currentDisplayVal += (targetVal - currentDisplayVal) * 0.3;
-
-                const val = Math.min(1.0, currentDisplayVal * 1.5);
+                // --- レイテンシ調整用のキレ重視ロジック ---
+                const val = Math.min(1.0, currentL * 1.5);
                 const x = 0.4 * (1.0 - val);
                 blockL.position.x = -x;
                 blockR.position.x = x;
 
-                // 衝突時の色変化
+                // 衝突時にパッと白くする（反応速度の視認性アップ）
                 const color = val > 0.6 ? 0xffffff : 0x00ff00;
                 blockL.material.color.set(color);
                 blockR.material.color.set(color);
 
                 renderer.render(scene, camera);
                 
-                // データが来ないときに自然に0に近づける（1フレームごとに4%減衰）
-                targetVal *= 0.96; 
+                // 次のデータが来るまで少しずつ減衰させるが、補間はしない
+                currentL *= 0.8; 
             });
         }
         document.getElementById('arBtn').onclick = start;
