@@ -1,93 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>QUEST V78 - LATENCY ADJUST</title>
-<style>
-    body { margin: 0; background: #000; overflow: hidden; } 
-    #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }
-    #ui { position: fixed; top: 10px; right: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; z-index: 1001; font-family: monospace; }
-</style>
-</head>
-<body>
-    <div id="ui">Delay: <span id="delayVal">0.25</span>s (Adjust in code)</div>
-    <button id="arBtn">START VR V78</button>
-    <audio id="remoteAudio" autoplay playsinline muted></audio>
+// Quest側の render ループ内を以下のように調整
+renderer.setAnimationLoop((t, frame) => {
+    // (中略: カメラ追従コード)
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
-    <script>
-        let scene, camera, renderer, xrRefSpace, blockL, blockR, mainGroup;
-        let audioCtx, delayNode, streamSource;
-        let currentL = 0;
-        const DELAY_SEC = 0.25; // ★ここを 0.1 や 0.4 に変えて調整してください★
+    // --- レイテンシ調整用・滑らか追従ロジック ---
+    // 0.25 (25%) 程度の Lerp が、カクつかず、かつ遅延を感じさせない最適な数値です
+    currentDisplayVal += (currentL - currentDisplayVal) * 0.25;
 
-        const peer = new Peer('quest-receiver');
-        peer.on('connection', c => {
-            c.on('data', d => { if(d && d.l !== undefined) currentL = d.l; });
-        });
-        peer.on('call', call => {
-            call.answer(new MediaStream());
-            call.on('stream', s => { 
-                document.getElementById('remoteAudio').srcObject = s;
-                if (audioCtx) connectAudio(s);
-            });
-        });
+    const val = Math.min(1.0, currentDisplayVal * 1.5);
+    const x = 0.4 * (1.0 - val);
+    blockL.position.x = -x;
+    blockR.position.x = x;
 
-        function connectAudio(stream) {
-            audioCtx.resume();
-            streamSource = audioCtx.createMediaStreamSource(stream);
-            delayNode = audioCtx.createDelay(2.0); // 最大2秒まで
-            delayNode.delayTime.value = DELAY_SEC; 
-            streamSource.connect(delayNode);
-            delayNode.connect(audioCtx.destination);
-            document.getElementById('delayVal').innerText = DELAY_SEC;
-        }
+    // 衝突判定。ここがパッと光る瞬間を音に合わせる
+    const color = val > 0.5 ? 0xffffff : 0x00ff00;
+    blockL.material.color.set(color);
+    blockR.material.color.set(color);
 
-        async function start() {
-            audioCtx = new AudioContext();
-            const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.xr.enabled = true;
-            document.body.appendChild(renderer.domElement);
-            document.getElementById('arBtn').style.display = 'none';
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-            
-            mainGroup = new THREE.Group();
-            const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
-            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            mainGroup.add(blockL, blockR);
-            scene.add(mainGroup);
-
-            xrRefSpace = await session.requestReferenceSpace('local');
-            await renderer.xr.setSession(session);
-            renderer.setAnimationLoop((t, frame) => {
-                if (!frame) return;
-                const pose = frame.getViewerPose(xrRefSpace);
-                if (pose) {
-                    const m4 = new THREE.Matrix4().fromArray(pose.views[0].transform.matrix);
-                    mainGroup.position.copy(new THREE.Vector3().setFromMatrixPosition(m4)).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(m4)));
-                    mainGroup.quaternion.copy(new THREE.Quaternion().setFromRotationMatrix(m4));
-                }
-
-                // --- レイテンシ調整用のキレ重視ロジック ---
-                const val = Math.min(1.0, currentL * 1.5);
-                const x = 0.4 * (1.0 - val);
-                blockL.position.x = -x;
-                blockR.position.x = x;
-
-                // 衝突時にパッと白くする（反応速度の視認性アップ）
-                const color = val > 0.6 ? 0xffffff : 0x00ff00;
-                blockL.material.color.set(color);
-                blockR.material.color.set(color);
-
-                renderer.render(scene, camera);
-                
-                // 次のデータが来るまで少しずつ減衰させるが、補間はしない
-                currentL *= 0.8; 
-            });
-        }
-        document.getElementById('arBtn').onclick = start;
-    </script>
-</body>
-</html>
+    renderer.render(scene, camera);
+});
