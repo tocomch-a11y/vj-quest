@@ -2,18 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V42 - FORCE START</title>
+    <title>PSY-AR V43 - BYPASS</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
         #arBtn { 
             padding: 40px 60px; font-size: 24px; font-weight: bold;
-            background: #ff00ff; color: #fff; border: none; border-radius: 60px; 
-            cursor: pointer; box-shadow: 0 0 30px #ff00ff;
+            background: #0000ff; color: #fff; border: none; border-radius: 60px; 
+            cursor: pointer; box-shadow: 0 0 30px #0000ff;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">FORCE START AR</button>
+    <button id="arBtn">BYPASS START AR</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -25,7 +25,6 @@
         window.mD = { low: 0, mid: 0, high: 0 };
         let currentIdx = 0, nextSwitch = 0, hue = 0;
 
-        // 通信初期化（セッションに関係なく実行）
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
@@ -35,18 +34,17 @@
 
         function setup() {
             const geoms = [
-                new THREE.TorusKnotGeometry(0.5, 0.01, 128, 16), // 0
-                new THREE.OctahedronGeometry(1, 0),             // 1
-                new THREE.TorusGeometry(0.7, 0.2, 4, 4),        // 2
-                new THREE.BoxGeometry(2, 2, 0.02),              // 3
-                new THREE.IcosahedronGeometry(0.5, 2),          // 4
-                new THREE.CylinderGeometry(0.01, 0.01, 4, 6),   // 5
-                new THREE.TorusGeometry(0.6, 0.15, 12, 48),     // 6
-                new THREE.TetrahedronGeometry(0.6, 0),          // 7
-                new THREE.TorusKnotGeometry(0.4, 0.08, 64, 8),  // 8
-                new THREE.SphereGeometry(1, 8, 4)               // 9
+                new THREE.TorusKnotGeometry(0.5, 0.01, 128, 16),
+                new THREE.OctahedronGeometry(1, 0),
+                new THREE.TorusGeometry(0.7, 0.2, 4, 4),
+                new THREE.BoxGeometry(2, 2, 0.02),
+                new THREE.IcosahedronGeometry(0.5, 2),
+                new THREE.CylinderGeometry(0.01, 0.01, 4, 6),
+                new THREE.TorusGeometry(0.6, 0.15, 12, 48),
+                new THREE.TetrahedronGeometry(0.6, 0),
+                new THREE.TorusKnotGeometry(0.4, 0.08, 64, 8),
+                new THREE.SphereGeometry(1, 8, 4)
             ];
-
             for(let i=0; i<10; i++) {
                 const g = new THREE.Group();
                 for(let j=0; j<25; j++) {
@@ -62,11 +60,8 @@
         }
 
         async function start() {
-            // 音声を先に解放
-            document.getElementById('audio').play().catch(()=>{});
-
             try {
-                // オプションを空にして、ブラウザのデフォルトに任せる（エラー回避の最大策）
+                // セッション開始（オプション無しで最短要求）
                 const session = await navigator.xr.requestSession('immersive-ar');
                 
                 renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -82,8 +77,16 @@
                 scene.add(mainGroup);
                 setup();
 
-                // エラーの出やすい requestReferenceSpace を最小構成で実行
-                const refSpace = await session.requestReferenceSpace('local');
+                // 【最重要】エラーが出やすい箇所をtry-catchで無視する
+                try {
+                    await session.requestReferenceSpace('local');
+                } catch(refError) {
+                    console.warn("ReferenceSpace failed but continuing...");
+                    // 失敗しても、viewer（頭の動き）さえ取れれば描画はできる可能性があります
+                    try { await session.requestReferenceSpace('viewer'); } catch(e) {}
+                }
+
+                document.getElementById('audio').play().catch(()=>{});
 
                 renderer.setAnimationLoop((t, frame) => {
                     if (!frame) return;
@@ -96,6 +99,7 @@
                     }
 
                     const d = window.mD;
+                    // 頭の動きに合わせて追従
                     const target = new THREE.Vector3(0, 0, -1.8).applyQuaternion(camera.quaternion).add(camera.position);
                     mainGroup.position.lerp(target, 0.1);
 
@@ -107,11 +111,9 @@
                     renderer.render(scene, camera);
                 });
             } catch (e) {
-                alert("起動失敗: " + e.message);
-                console.error(e);
+                alert("FORCE START FAILED: " + e.message);
             }
         }
-
         document.getElementById('arBtn').onclick = start;
     </script>
 </body>
