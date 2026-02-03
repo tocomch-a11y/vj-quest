@@ -2,20 +2,24 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V59 - ECHO CANCEL</title>
+    <title>PSY-AR V60 - LATENCY CALIBRATOR</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 35px 60px; font-size: 24px; font-weight: bold;
-            background: #fff; color: #000; border: none; border-radius: 50px; 
-            cursor: pointer; z-index: 1000; box-shadow: 0 0 40px rgba(255,255,255,0.7);
+            padding: 30px; font-size: 20px; font-weight: bold;
+            background: #fff; color: #000; border: none; border-radius: 10px; cursor: pointer; z-index: 1000;
+        }
+        #info {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; text-align: center;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V59</button>
-    <audio id="remoteAudio" autoplay playsinline muted style="display:none;"></audio>
+    <button id="arBtn">START CALIBRATION V60</button>
+    <div id="info">時報の「ピッ」で円がフラッシュし、<br>「ポーン」で色が大きく変わるように調整してください。</div>
+    <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
@@ -24,154 +28,100 @@
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let audioCtx, delayNode, streamSource;
         let remoteStream = null;
-        let patterns = [];
-        window.mD = { low:0.1, mid:0.1, high:0.1, rms:0.2, beat:0, centroid:0.5, flux:0, pan:0 };
-        let currentIdx = 0, nextSwitch = 0, hue = 0, beatAcc = 0;
-        const _v = new THREE.Vector3(), _color = new THREE.Color();
+        let calibratorMesh, needleMesh;
+        window.mD = { low:0, mid:0, high:0, rms:0, beat:0 };
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
-            c.on('data', d => { if(d) for(let k in window.mD) if(d[k]!==undefined) window.mD[k]=d[k]; });
+            c.on('data', d => { if(d) for(let k in window.mD) window.mD[k]=d[k]; });
         });
 
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { 
-                console.log("Stream received!");
                 remoteStream = s;
-                // 方法1: Audio要素（ミュート状態で流し、ブラウザのストリームを活性化させる）
-                const audioEl = document.getElementById('remoteAudio');
-                audioEl.srcObject = s;
-                audioEl.muted = true; // ← ここで二重音を防止
-                
-                // 方法2: WebAudio（ディレイをかけてこちらから音を出す）
+                document.getElementById('remoteAudio').srcObject = s;
                 if (audioCtx) connectStream(s);
             });
         });
 
         function connectStream(stream) {
-            try {
-                if (streamSource) streamSource.disconnect();
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-                
-                streamSource = audioCtx.createMediaStreamSource(stream);
-                if (!delayNode) {
-                    delayNode = audioCtx.createDelay(1.0);
-                    // ビジュアルの反応に音を合わせるための待機時間（秒）
-                    // 0.25秒くらいが標準的ですが、ズレていればここを調整
-                    delayNode.delayTime.value = 0.25; 
-                    delayNode.connect(audioCtx.destination);
-                }
-                streamSource.connect(delayNode);
-                console.log("WebAudio Delayed Path Connected");
-            } catch(e) { console.error("WebAudio Error:", e); }
+            if (streamSource) streamSource.disconnect();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            streamSource = audioCtx.createMediaStreamSource(stream);
+            if (!delayNode) {
+                delayNode = audioCtx.createDelay(1.0);
+                // --- ここを書き換えて調整してください ---
+                delayNode.delayTime.value = 0.25; 
+                // ------------------------------------
+                delayNode.connect(audioCtx.destination);
+            }
+            streamSource.connect(delayNode);
         }
 
         function setup() {
-            for(let i=1; i<=17; i++) {
-                const group = new THREE.Group();
-                let geo, count = 30;
-                let matParams = { transparent: true, opacity: 0.6, wireframe: true };
-                switch(i) {
-                    case 1: geo = new THREE.TorusKnotGeometry(0.7, 0.2, 80, 12); break;
-                    case 2: geo = new THREE.TorusGeometry(0.5, 0.05, 12, 48); break;
-                    case 3: geo = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 8); break;
-                    case 4: geo = new THREE.BoxGeometry(0.015, 2.5, 0.015); count = 40; break;
-                    case 5: geo = new THREE.TorusKnotGeometry(0.6, 0.05, 64, 16); matParams.opacity = 0.9; break; 
-                    case 6: geo = new THREE.TorusGeometry(0.8, 0.15, 8, 20); break;
-                    case 7: geo = new THREE.BoxGeometry(0.01, 0.01, 4); count = 40; break;
-                    case 8: geo = new THREE.PlaneGeometry(2.5, 2.5, 4, 4); count = 4; break;
-                    case 9: geo = new THREE.IcosahedronGeometry(0.4, 0); count = 20; break;
-                    case 10: geo = new THREE.CylinderGeometry(1.2, 1.2, 0.05, 12); break;
-                    case 11: geo = new THREE.TorusKnotGeometry(0.4, 0.15, 60, 10); break;
-                    case 12: geo = new THREE.TorusGeometry(0.6, 0.2, 3, 3); break;
-                    case 13: geo = new THREE.TorusGeometry(1.2, 0.01, 6, 32); break;
-                    case 14: geo = new THREE.TorusKnotGeometry(0.6, 0.25, 20, 6); break;
-                    case 15: geo = new THREE.SphereGeometry(1.7, 8, 6); break;
-                    case 16: geo = new THREE.TorusGeometry(0.7, 0.25, 4, 4); break;
-                    case 17: geo = new THREE.PlaneGeometry(0.02, 3, 1); count = 35; break;
-                }
-                for(let j=0; j<count; j++) {
-                    const mat = new THREE.MeshBasicMaterial({...matParams});
-                    if([2, 7, 13, 17].includes(i)) mat.wireframe = false; 
-                    const m = new THREE.Mesh(geo, mat);
-                    const seed = i * 13 + j * 7;
-                    if(i!==8 && i!==15) m.position.set(Math.sin(seed)*2.5, Math.cos(seed*1.2)*2.5, Math.sin(seed*0.8)*4 - 2);
-                    m.userData = { syncType: j % 8, offset: seed, speedMult: 0.8 + Math.random(), steps: (i % 5) + 3 };
-                    group.add(m);
-                }
-                group.visible = false; patterns.push(group); mainGroup.add(group);
-            }
-            patterns[0].visible = true;
+            mainGroup = new THREE.Group();
+            scene.add(mainGroup);
+
+            // 1. 中央のリング（音量で光る）
+            const ringGeo = new THREE.TorusGeometry(0.5, 0.05, 16, 100);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            calibratorMesh = new THREE.Mesh(ringGeo, ringMat);
+            mainGroup.add(calibratorMesh);
+
+            // 2. 針（ビートでカクカク動く）
+            const needleGeo = new THREE.BoxGeometry(0.02, 0.4, 0.02);
+            needleGeo.translate(0, 0.2, 0);
+            const needleMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            needleMesh = new THREE.Mesh(needleGeo, needleMat);
+            mainGroup.add(needleMesh);
         }
 
         async function start() {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioCtx.state === 'suspended') await audioCtx.resume();
-                
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                gain.gain.value = 0.001;
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-
-                if (remoteStream) connectStream(remoteStream);
-
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
-                renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.xr.enabled = true; renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                mainGroup = new THREE.Group(); scene.add(mainGroup);
                 setup();
+                if (remoteStream) connectStream(remoteStream);
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-
-                setInterval(() => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, 1000);
-            } catch (e) { alert("Error: " + e.message); }
+            } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
-            const d = window.mD; 
-            beatAcc += (0.01 + d.beat * 0.15); 
-            hue += 0.003 + (d.centroid * 0.01);
-            if (Date.now() > nextSwitch) {
-                patterns[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 17; patterns[currentIdx].visible = true;
-                nextSwitch = Date.now() + 8000;
-            }
-            _v.set(0, 0, -2.2).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(_v, 0.1);
+            const d = window.mD;
 
-            patterns[currentIdx].children.forEach((p, j) => {
-                if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
-                const val = [d.low, d.mid, d.high, d.rms, d.beat, d.centroid, d.flux, d.pan][p.userData.syncType] || 0.1;
-                const idx = currentIdx + 1;
-                const brightness = idx % 2 === 0 ? 0.6 : 0.3;
-                _color.setHSL((hue + p.userData.offset + val*0.3)%1, 0.8, brightness + d.rms * 0.4);
-                p.material.color.copy(_color);
-                p.material.opacity = (idx % 3 === 0) ? 0.4 : 0.8 * d.rms;
-                p.scale.setScalar(Math.max(0.1, 0.5 + val * 3.5));
-                const stepCount = p.userData.steps;
-                const step = Math.floor(beatAcc * stepCount + d.low * 5) * (Math.PI * 2 / stepCount);
-                if([1,2,3,4,6,7,11,12,13,14,15,16].includes(idx)) {
-                    p.rotation.y = step * p.userData.speedMult;
-                    p.rotation.z = step * 0.5;
-                } else { p.rotation.y += (0.02 + d.flux * 0.4); }
-                if(idx === 17) {
-                    const stepPos = Math.floor(j * 0.1 + beatAcc * 4 + d.low * 4);
-                    p.position.x = (stepPos % 6) - 3;
-                    p.scale.y = 1 + Math.sin(beatAcc * 4 + j) * d.rms * 6;
-                }
-            });
+            // ターゲット位置をカメラの正面に固定
+            _v.set(0, 0, -1.5).applyQuaternion(camera.quaternion).add(camera.position);
+            mainGroup.position.lerp(_v, 0.2);
+            mainGroup.lookAt(camera.position);
+
+            // ビジュアル反応
+            // 1. 音量(RMS)でリングの明るさと太さを変える
+            const s = 1.0 + d.rms * 3.0;
+            calibratorMesh.scale.set(s, s, 1);
+            calibratorMesh.material.color.setHSL(0, 0, Math.min(1, d.rms * 5));
+
+            // 2. ビート(beat)または低域(low)の瞬間に針をカクっと進める
+            // 時報の「ピッ」というアタックに反応して角度が変わる
+            if (d.beat > 0.5 || d.low > 0.5) {
+                needleMesh.rotation.z -= 0.2; // 叩くたびに少し回る
+                needleMesh.material.color.setHex(0xff0000); // 鳴った瞬間赤く
+            } else {
+                needleMesh.material.color.lerp(new THREE.Color(0x00ff00), 0.1);
+            }
+
             renderer.render(scene, camera);
         }
+        const _v = new THREE.Vector3();
         document.getElementById('arBtn').onclick = start;
     </script>
 </body>
