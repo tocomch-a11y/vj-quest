@@ -2,23 +2,24 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V60 - LATENCY CALIBRATOR</title>
+    <title>PSY-AR V61 - PRECISION SYNC</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
             padding: 30px; font-size: 20px; font-weight: bold;
-            background: #fff; color: #000; border: none; border-radius: 10px; cursor: pointer; z-index: 1000;
+            background: #00ff00; color: #000; border: none; cursor: pointer; z-index: 1000;
         }
-        #info {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; text-align: center;
+        #valDisplay {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            color: #0f0; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0;
+            font-size: 24px; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START CALIBRATION V60</button>
-    <div id="info">時報の「ピッ」で円がフラッシュし、<br>「ポーン」で色が大きく変わるように調整してください。</div>
+    <button id="arBtn">START SYNC TEST V61</button>
+    <div id="valDisplay">LATENCY: <span id="latVal">0.25</span>s</div>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -28,8 +29,12 @@
         let scene, camera, renderer, xrRefSpace, mainGroup;
         let audioCtx, delayNode, streamSource;
         let remoteStream = null;
-        let calibratorMesh, needleMesh;
-        window.mD = { low:0, mid:0, high:0, rms:0, beat:0 };
+        let blockL, blockR, centerLine, flashMesh;
+        
+        // 調整用変数
+        let currentDelay = 0.25; 
+
+        window.mD = { low:0, rms:0, beat:0 };
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
@@ -51,9 +56,7 @@
             streamSource = audioCtx.createMediaStreamSource(stream);
             if (!delayNode) {
                 delayNode = audioCtx.createDelay(1.0);
-                // --- ここを書き換えて調整してください ---
-                delayNode.delayTime.value = 0.25; 
-                // ------------------------------------
+                delayNode.delayTime.value = currentDelay; 
                 delayNode.connect(audioCtx.destination);
             }
             streamSource.connect(delayNode);
@@ -63,21 +66,27 @@
             mainGroup = new THREE.Group();
             scene.add(mainGroup);
 
-            // 1. 中央のリング（音量で光る）
-            const ringGeo = new THREE.TorusGeometry(0.5, 0.05, 16, 100);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            calibratorMesh = new THREE.Mesh(ringGeo, ringMat);
-            mainGroup.add(calibratorMesh);
+            // 1. 中央の判定ライン
+            const lineGeo = new THREE.BoxGeometry(0.01, 0.8, 0.01);
+            centerLine = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({color: 0xffffff}));
+            mainGroup.add(centerLine);
 
-            // 2. 針（ビートでカクカク動く）
-            const needleGeo = new THREE.BoxGeometry(0.02, 0.4, 0.02);
-            needleGeo.translate(0, 0.2, 0);
-            const needleMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            needleMesh = new THREE.Mesh(needleGeo, needleMat);
-            mainGroup.add(needleMesh);
+            // 2. 左右の衝突ブロック
+            const blockGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+            blockL = new THREE.Mesh(blockGeo, new THREE.MeshBasicMaterial({color: 0xff0000}));
+            blockR = new THREE.Mesh(blockGeo, new THREE.MeshBasicMaterial({color: 0xff0000}));
+            mainGroup.add(blockL);
+            mainGroup.add(blockR);
+
+            // 3. 背景のフラッシュ面
+            const flashGeo = new THREE.PlaneGeometry(2, 2);
+            flashMesh = new THREE.Mesh(flashGeo, new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0}));
+            flashMesh.position.z = -0.1;
+            mainGroup.add(flashMesh);
         }
 
         async function start() {
+            document.getElementById('latVal').innerText = currentDelay;
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
@@ -99,29 +108,36 @@
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
 
-            // ターゲット位置をカメラの正面に固定
-            _v.set(0, 0, -1.5).applyQuaternion(camera.quaternion).add(camera.position);
-            mainGroup.position.lerp(_v, 0.2);
+            const targetPos = new THREE.Vector3(0, 0, -1.2).applyQuaternion(camera.quaternion).add(camera.position);
+            mainGroup.position.lerp(targetPos, 0.2);
             mainGroup.lookAt(camera.position);
 
-            // ビジュアル反応
-            // 1. 音量(RMS)でリングの明るさと太さを変える
-            const s = 1.0 + d.rms * 3.0;
-            calibratorMesh.scale.set(s, s, 1);
-            calibratorMesh.material.color.setHSL(0, 0, Math.min(1, d.rms * 5));
+            // --- 同期ロジック ---
+            // 拍(beat)や低域(low)に反応して、ブロックが中央へ「衝突」する
+            // 戻る動きはゆっくり、叩く動きは鋭く
+            const impact = Math.pow(d.beat, 0.5) || Math.pow(d.low, 0.5); 
+            
+            // ブロックの位置計算 (0で衝突)
+            const offsetX = 0.4 * (1.0 - impact);
+            blockL.position.set(-offsetX, 0, 0);
+            blockR.position.set(offsetX, 0, 0);
 
-            // 2. ビート(beat)または低域(low)の瞬間に針をカクっと進める
-            // 時報の「ピッ」というアタックに反応して角度が変わる
-            if (d.beat > 0.5 || d.low > 0.5) {
-                needleMesh.rotation.z -= 0.2; // 叩くたびに少し回る
-                needleMesh.material.color.setHex(0xff0000); // 鳴った瞬間赤く
+            // 衝突した瞬間に色を変える
+            if (impact > 0.8) {
+                blockL.material.color.setHex(0xffffff);
+                blockR.material.color.setHex(0xffffff);
+                flashMesh.material.opacity = d.rms * 0.5;
             } else {
-                needleMesh.material.color.lerp(new THREE.Color(0x00ff00), 0.1);
+                blockL.material.color.setHex(0xff0000);
+                blockR.material.color.setHex(0xff0000);
+                flashMesh.material.opacity *= 0.8;
             }
+
+            // 正報(ポーン)などの長い音は中央ラインの高さで表現
+            centerLine.scale.y = 1.0 + d.rms * 2.0;
 
             renderer.render(scene, camera);
         }
-        const _v = new THREE.Vector3();
         document.getElementById('arBtn').onclick = start;
     </script>
 </body>
