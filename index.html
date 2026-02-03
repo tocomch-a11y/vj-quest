@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V62 - SMOOTH SYNC</title>
+    <title>PSY-AR V63 - FIX VISIBILITY</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -16,7 +16,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SMOOTH TEST V62</button>
+    <button id="arBtn">START SYNC FIX V63</button>
     <div id="valDisplay">LATENCY: <span id="latVal">0.25</span>s</div>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
@@ -27,13 +27,13 @@
         let scene, camera, renderer, xrRefSpace;
         let audioCtx, delayNode, streamSource;
         let remoteStream = null;
-        let group, blockL, blockR, bar;
+        let group, blockL, blockR, centerLine;
         
         // --- 調整用：ここを変更 ---
         let currentDelay = 0.25; 
         // -----------------------
 
-        window.mD = { rms: 0, beat: 0, low: 0 };
+        window.mD = { rms: 0, low: 0 };
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
@@ -65,26 +65,19 @@
             group = new THREE.Group();
             scene.add(group);
 
-            // 背景バー
-            bar = new THREE.Mesh(
-                new THREE.PlaneGeometry(1.2, 0.02),
-                new THREE.MeshBasicMaterial({color: 0x333333})
-            );
-            group.add(bar);
-
-            // 衝突ブロック（縦長のバーに変更して視認性UP）
-            const geo = new THREE.BoxGeometry(0.04, 0.4, 0.04);
+            // 衝突ブロック（絶対に画面外に行かないよう範囲制限）
+            const geo = new THREE.BoxGeometry(0.05, 0.3, 0.05);
             blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             group.add(blockL);
             group.add(blockR);
 
-            // センター判定ライン
-            const center = new THREE.Mesh(
-                new THREE.BoxGeometry(0.01, 0.5, 0.01),
+            // センターライン
+            centerLine = new THREE.Mesh(
+                new THREE.BoxGeometry(0.01, 0.4, 0.01),
                 new THREE.MeshBasicMaterial({color: 0xffffff})
             );
-            group.add(center);
+            group.add(centerLine);
         }
 
         async function start() {
@@ -93,7 +86,7 @@
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setPixelRatio(1); // 負荷軽減
                 renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
@@ -111,29 +104,32 @@
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
 
-            // カメラの前に固定（カクつき防止のため補間を弱めるか、固定値を計算）
+            // カメラの正面1m先に固定
             const head = camera.position;
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             group.position.copy(head).add(dir.multiplyScalar(1.0));
-            group.quaternion.copy(camera.quaternion);
+            group.lookAt(head); // 常に自分の方を向く
 
-            // --- スムーズな衝突アニメーション ---
-            // rms(音量)をベースに、0.0〜1.0の範囲でブロックを移動
-            // 音が大きくなるほど x が 0 に近づく（衝突）
-            const targetX = 0.5 * Math.max(0, 1.0 - (d.rms * 5.0)); 
+            // --- 修正された同期ロジック ---
+            // rmsを0〜1にクランプ（制限）して、突き抜けを防止
+            const intensity = Math.min(1.0, d.rms * 6.0);
             
-            // 線形補間(lerp)を使用して動きを滑らかに
-            blockL.position.x = THREE.MathUtils.lerp(blockL.position.x, -targetX, 0.3);
-            blockR.position.x = THREE.MathUtils.lerp(blockR.position.x, targetX, 0.3);
+            // 待機位置は 0.4、音が最大で 0 (衝突)
+            const posX = 0.4 * (1.0 - intensity);
+            
+            // スムーズな動きのために線形補間を使用
+            blockL.position.x = THREE.MathUtils.lerp(blockL.position.x, -posX, 0.4);
+            blockR.position.x = THREE.MathUtils.lerp(blockR.position.x, posX, 0.4);
 
-            // 衝突の瞬間（ピッのピーク）に色を白く光らせる
-            const flash = d.rms > 0.15 ? 1 : 0;
-            if(flash) {
+            // 衝突の瞬間に発光
+            if (intensity > 0.5) {
                 blockL.material.color.set(0xffffff);
                 blockR.material.color.set(0xffffff);
+                centerLine.scale.y = 1.5;
             } else {
                 blockL.material.color.set(0x00ff00);
                 blockR.material.color.set(0x00ff00);
+                centerLine.scale.y = 1.0;
             }
 
             renderer.render(scene, camera);
