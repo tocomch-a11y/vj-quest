@@ -2,45 +2,45 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V65 - AUTO SENSING</title>
+    <title>PSY-AR V66 - DEBUG MODE</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
             padding: 30px; font-size: 20px; font-weight: bold; background: #00ff00; border: none; z-index: 1000;
         }
-        #valDisplay {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; z-index: 1001; text-align: center;
+        #debugInfo {
+            position: fixed; top: 10px; left: 10px; color: #0f0; 
+            background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; z-index: 1001;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START SYNC FIX V65</button>
-    <div id="valDisplay">LATENCY: <span id="latVal">0.25</span>s<br><small>緑が動くか確認してください</small></div>
+    <button id="arBtn">START DEBUG V66</button>
+    <div id="debugInfo">
+        RMS DATA: <span id="rmsVal">0.000</span><br>
+        LATENCY: <span id="latVal">0.25</span>s
+    </div>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace;
-        let audioCtx, delayNode, streamSource;
-        let remoteStream = null;
-        let group, blockL, blockR, centerLine;
+        let scene, camera, renderer, xrRefSpace, group, blockL, blockR;
+        let audioCtx, delayNode, streamSource, remoteStream = null;
         
-        let currentDelay = 0.25; 
-        let maxVol = 0.01; // 感度の自動調整用
-
+        let currentDelay = 0.25; // ここを調整
         window.mD = { rms: 0 };
 
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => {
+            console.log("Connected!");
             c.on('data', d => { 
                 if(d && d.rms !== undefined) {
                     window.mD.rms = d.rms;
-                    // 最大音量を記録して、常に最適な動きになるよう調整
-                    if(d.rms > maxVol) maxVol = d.rms;
+                    // 数値を画面に表示
+                    document.getElementById('rmsVal').innerText = d.rms.toFixed(3);
                 }
             });
         });
@@ -60,7 +60,7 @@
             streamSource = audioCtx.createMediaStreamSource(stream);
             if (!delayNode) {
                 delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = currentDelay; 
+                delayNode.delayTime.value = currentDelay;
                 delayNode.connect(audioCtx.destination);
             }
             streamSource.connect(delayNode);
@@ -69,17 +69,11 @@
         function setup() {
             group = new THREE.Group();
             scene.add(group);
-
-            const geo = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+            const geo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
             blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
             group.add(blockL); group.add(blockR);
-
-            centerLine = new THREE.Mesh(
-                new THREE.BoxGeometry(0.01, 0.6, 0.01),
-                new THREE.MeshBasicMaterial({color: 0xffffff})
-            );
-            group.add(centerLine);
+            group.add(new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.6, 0.01), new THREE.MeshBasicMaterial({color: 0xffffff})));
         }
 
         async function start() {
@@ -104,37 +98,30 @@
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             
-            // 常にカメラの正面1.2mに配置
             const headPos = new THREE.Vector3();
             const headQuat = new THREE.Quaternion();
             camera.getWorldPosition(headPos);
             camera.getWorldQuaternion(headQuat);
-            const offset = new THREE.Vector3(0, 0, -1.2).applyQuaternion(headQuat);
-            group.position.copy(headPos).add(offset);
+            group.position.copy(headPos).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(headQuat));
             group.quaternion.copy(headQuat);
 
-            // --- 正規化ロジック ---
-            // 届いたrmsを、これまで受け取った最大値で割ることで 0.0〜1.0 に変換
-            let normalizedVol = window.mD.rms / maxVol;
-            if(isNaN(normalizedVol)) normalizedVol = 0;
+            // --- 強制反応ロジック ---
+            // わずかでも音が届いていれば、その大きさを15倍にして反応させる
+            let rawVol = window.mD.rms;
+            let moveAmount = Math.min(0.5, rawVol * 15.0); 
 
-            // 動きをスムーズにするための補間
-            const targetX = 0.5 * (1.0 - Math.min(1.0, normalizedVol));
-            blockL.position.x = THREE.MathUtils.lerp(blockL.position.x, -targetX, 0.3);
-            blockR.position.x = THREE.MathUtils.lerp(blockR.position.x, targetX, 0.3);
+            // 緑のブロックを動かす（0.5が待機位置、0が衝突）
+            blockL.position.x = -(0.5 - moveAmount);
+            blockR.position.x = (0.5 - moveAmount);
 
-            // 衝突の視覚フィードバック
-            if (normalizedVol > 0.7) {
+            // 0.05以上のRMSがあれば白く光らせる
+            if (rawVol > 0.05) {
                 blockL.material.color.set(0xffffff);
                 blockR.material.color.set(0xffffff);
             } else {
                 blockL.material.color.set(0x00ff00);
                 blockR.material.color.set(0x00ff00);
             }
-            
-            // maxVolを少しずつ下げることで、音が小さくなっても追従し続ける
-            maxVol *= 0.998; 
-            if(maxVol < 0.01) maxVol = 0.01;
 
             renderer.render(scene, camera);
         }
