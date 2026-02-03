@@ -2,18 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V28 - ABSTRACT DIMENSION</title>
+    <title>PSY-AR V46 - HYPER EVOLUTION</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px 50px; font-size: 20px; background: #fff; color: #000; 
-            border: none; border-radius: 40px; cursor: pointer; z-index: 1000;
+            padding: 35px 60px; font-size: 24px; font-weight: bold;
+            background: #fff; color: #000; border: none; border-radius: 50px; 
+            cursor: pointer; z-index: 1000; box-shadow: 0 0 30px rgba(255,255,255,0.5);
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START ABSTRACT SESSION</button>
+    <button id="arBtn">START EVOLUTION V46</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -26,6 +27,7 @@
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
+        // V28の安定した通信コード
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
@@ -33,50 +35,27 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        const numData = [
-            [1,1,1,1,0,1,1,0,1,1,0,1,1,1,1], [0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],
-            [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-            [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1], [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
-            [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1]
-        ];
-
-        function createNumber(idx) {
-            const group = new THREE.Group();
-            numData[idx].forEach((val, i) => {
-                if(val) {
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.012), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                    m.position.set((i%3)*0.02 - 0.02, Math.floor(i/3)*-0.02 + 0.04, 0);
-                    group.add(m);
-                }
-            });
-            return group;
-        }
-
         function setup() {
+            // V46 新10種：数理的・空間的な重なりを重視した新デザイン
+            const geoms = [
+                new THREE.TorusKnotGeometry(0.5, 0.005, 200, 20, 3, 5), // 0: デジタル・ナーヴ（神経）
+                new THREE.IcosahedronGeometry(0.8, 1),                 // 1: データの胞子
+                new THREE.TorusGeometry(0.7, 0.25, 3, 3),              // 2: デルタ・チューブ
+                new THREE.BoxGeometry(0.01, 3, 0.01),                  // 3: 垂直の光柱（レーザー）
+                new THREE.DodecahedronGeometry(0.6, 0),                // 4: 多面体の核
+                new THREE.TorusGeometry(1.0, 0.002, 8, 100),           // 5: 虚空のリング（極細）
+                new THREE.OctahedronGeometry(0.5, 4),                  // 6: フラクタル・ダイヤモンド
+                new THREE.CylinderGeometry(0.1, 0.4, 0.4, 4),          // 7: 浮遊ピラミッド
+                new THREE.TorusKnotGeometry(0.4, 0.12, 100, 12, 2, 3), // 8: 重なり合う龍
+                new THREE.SphereGeometry(1.5, 12, 12)                  // 9: デジタル・グリッド球体
+            ];
+
             for(let i=0; i<10; i++) {
                 const group = new THREE.Group();
-                const num = createNumber(i);
-                num.name = "ID_LABEL";
-                group.add(num);
-
-                let geo, count = 30;
-                switch(i) {
-                    case 0: geo = new THREE.TorusGeometry(0.5, 0.001, 2, 100); count = 50; break; // デジタル・スパイダーウェブ
-                    case 1: geo = new THREE.PlaneGeometry(1, 1, 1, 1); count = 20; break; // 空間を切り裂くモノリス
-                    case 2: geo = new THREE.RingGeometry(0.1, 1.2, 3); count = 15; break; // 視覚を奪う巨大な瞬き
-                    case 3: geo = new THREE.IcosahedronGeometry(0.4, 0); count = 12; break; // 浮遊する幾何学の結晶
-                    case 4: geo = new THREE.TorusKnotGeometry(0.5, 0.05, 32, 2); count = 6; break; // 低速で蠢くワーム
-                    case 5: geo = new THREE.SphereGeometry(0.5, 32, 2); count = 10; break; // 座標軸の籠（経緯線）
-                    case 6: geo = new THREE.BoxGeometry(0.1, 2, 0.1); count = 30; break; // 垂直に並ぶデジタル・ピラー
-                    case 7: geo = new THREE.DodecahedronGeometry(0.2, 1); count = 40; break; // 浮遊する胞子クラウド
-                    case 8: geo = new THREE.TorusGeometry(0.4, 0.1, 4, 4); count = 20; break; // 空間を埋めるテトラ・リング
-                    case 9: geo = new THREE.PlaneGeometry(0.01, 3); count = 60; break; // 空間を遮断する光の壁
-                }
-
+                let count = (i === 3 || i === 9) ? 50 : 25; // 特定のパターンは密度を上げる
                 for(let j=0; j<count; j++) {
-                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
-                    m.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*3, (Math.random()-0.5)*3);
+                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
+                    m.position.set((Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5);
                     m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
                     group.add(m);
                 }
@@ -90,28 +69,32 @@
         async function start() {
             document.getElementById('audio').play().catch(() => {});
             try {
+                // V28で成功していた「local-floor」設定
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
+
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 setup();
+
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-            } catch (e) { alert(e.message); }
+            } catch (e) { alert("AR Error: " + e.message); }
         }
 
         function render(time, frame) {
             if (!xrRefSpace || !frame) return;
             const d = window.mD;
-            hue += 0.003;
+            hue += 0.005;
 
+            // 6秒ごとに自動切り替え
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
                 currentIdx = (currentIdx + 1) % 10;
@@ -119,26 +102,25 @@
                 nextSwitch = Date.now() + 6000;
             }
 
-            _v.set(0, 0, -1.4).applyQuaternion(camera.quaternion).add(camera.position);
+            // V28の安定した追従ロジック
+            _v.set(0, 0, -1.8).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, i) => {
-                if (p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
-                
-                p.rotation.y += 0.008 + d.high * 0.5;
-                p.rotation.x += 0.004 + d.mid * 0.3;
-                
-                // トリップ演出：低域での急激なパンプ
-                const s = 0.5 + d.low * 1.8;
-                p.scale.setScalar(s);
+                // 音への反応
+                p.rotation.y += 0.01 + d.high;
+                p.rotation.z += 0.005 + d.mid;
+                p.scale.setScalar(0.7 + d.low * 2.3);
 
-                _color.setHSL((hue + i/patterns[currentIdx].children.length)%1, 0.9, 0.6);
+                // カラーアニメーション
+                _color.setHSL((hue + i/25)%1, 1, 0.5);
                 p.material.color.copy(_color);
-                p.material.opacity = 0.2 + d.low * 0.8;
+                p.material.opacity = 0.3 + d.low * 0.7;
 
-                // 9番：光の壁の横移動
-                if(currentIdx === 9) {
-                    p.position.x += Math.sin(time/500 + i) * 0.01;
+                // 3番（レーザー）だけの特殊挙動
+                if(currentIdx === 3) {
+                    p.rotation.x = Math.PI / 2;
+                    p.position.y += Math.sin(time/500 + i) * 0.01;
                 }
             });
             renderer.render(scene, camera);
