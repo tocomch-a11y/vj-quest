@@ -1,148 +1,77 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>PSY-AR V74 - VISUAL FIX</title>
-    <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
-        #arBtn { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px; font-size: 20px; font-weight: bold;
-            background: #00ff00; color: #000; border: none; z-index: 1000;
-        }
-        #status {
-            position: fixed; top: 10px; left: 10px; color: #0f0; 
-            background: rgba(0,0,0,0.8); padding: 10px; z-index: 1001; font-size: 14px;
-        }
-    </style>
+<head><meta charset="UTF-8"><title>PSY-AR V75</title>
+<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }</style>
 </head>
 <body>
-    <div id="status">Peer: Initializing...<br>Data: None</div>
-    <button id="arBtn">START VR & VISUAL CHECK</button>
-    <audio id="remoteAudio" autoplay playsinline></audio>
+    <button id="arBtn">START SYNC V75</button>
+    <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
-
     <script>
-        let scene, camera, renderer, xrRefSpace, mainGroup;
+        let scene, camera, renderer, xrRefSpace, blockL, blockR, mainGroup;
         let audioCtx, delayNode, streamSource;
-        let remoteStream = null;
-        let blockL, blockR, debugBox;
-        const statusEl = document.getElementById('status');
-        window.mD = { low: 0, mid: 0, high: 0 };
+        window.mD = { low: 0, mid: 0 };
 
-        // --- PeerJS通信 ---
         const peer = new Peer('quest-receiver');
-        peer.on('open', (id) => { statusEl.innerHTML = "Peer: Ready (" + id + ")<br>Data: Waiting..."; });
-
         peer.on('connection', c => {
-            c.on('data', d => { 
-                if(d) {
-                    window.mD = d;
-                    statusEl.innerHTML = `Peer: Connected<br>Data: L:${d.low.toFixed(2)} M:${d.mid.toFixed(2)}`;
-                }
-            });
+            c.on('data', d => { if(d) window.mD = d; });
         });
-
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { 
-                remoteStream = s;
                 document.getElementById('remoteAudio').srcObject = s;
-                if (audioCtx) connectStream(s);
+                if (audioCtx) connectAudio(s);
             });
         });
 
-        function connectStream(stream) {
-            if (!audioCtx) audioCtx = new AudioContext();
-            audioCtx.resume();
+        function connectAudio(stream) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             if (streamSource) streamSource.disconnect();
             streamSource = audioCtx.createMediaStreamSource(stream);
-            if (!delayNode) {
-                delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.25; 
-                delayNode.connect(audioCtx.destination);
-            }
+            delayNode = audioCtx.createDelay(1.0);
+            delayNode.delayTime.value = 0.25; // ズレ調整
             streamSource.connect(delayNode);
-        }
-
-        function setupVisuals() {
-            mainGroup = new THREE.Group();
-            scene.add(mainGroup);
-
-            // 1. ガイド用の外枠（音がなくても見える）
-            const frameGeo = new THREE.BoxGeometry(1.0, 0.01, 0.01);
-            const frameMat = new THREE.MeshBasicMaterial({color: 0x444444});
-            const frame = new THREE.Mesh(frameGeo, frameMat);
-            frame.position.y = -0.2; // 少し下に配置
-            mainGroup.add(frame);
-
-            // 2. 緑のブロック（動くやつ）
-            const geo = new THREE.BoxGeometry(0.08, 0.25, 0.08);
-            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            mainGroup.add(blockL, blockR);
-
-            // 3. センターターゲット（白い縦線）
-            const center = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.4, 0.01), new THREE.MeshBasicMaterial({color: 0xffffff}));
-            mainGroup.add(center);
+            delayNode.connect(audioCtx.destination); // ここだけで音を出す
         }
 
         async function start() {
             audioCtx = new AudioContext();
-            await audioCtx.resume();
-            if (remoteStream) connectStream(remoteStream);
-
-            try {
-                const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
-                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.xr.enabled = true;
-                document.body.appendChild(renderer.domElement);
-                document.getElementById('arBtn').style.display = 'none';
-                
-                scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                
-                setupVisuals();
-
-                xrRefSpace = await session.requestReferenceSpace('local');
-                await renderer.xr.setSession(session);
-                renderer.setAnimationLoop(render);
-            } catch (e) { alert(e.message); }
-        }
-
-        function render(time, frame) {
-            if (!xrRefSpace || !frame) return;
-
-            // 重要：常にカメラの1.0m正面に「固定」して配置
-            const headPos = new THREE.Vector3();
-            const headQuat = new THREE.Quaternion();
-            const headMatrix = frame.getViewerPose(xrRefSpace).views[0].transform.matrix;
+            const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            document.getElementById('arBtn').style.display = 'none';
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
             
-            // WebXRのカメラ行列から位置と回転を抽出
-            const e = new THREE.Matrix4().fromArray(headMatrix);
-            headPos.setFromMatrixPosition(e);
-            headQuat.setFromRotationMatrix(e);
+            mainGroup = new THREE.Group();
+            const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            mainGroup.add(blockL, blockR);
+            scene.add(mainGroup);
 
-            const offset = new THREE.Vector3(0, 0, -1.0).applyQuaternion(headQuat);
-            mainGroup.position.copy(headPos).add(offset);
-            mainGroup.quaternion.copy(headQuat);
-
-            // --- 音量データによる動き ---
-            // Senderから送られてくる low を使用
-            const val = Math.min(1.0, (window.mD.low || 0) * 1.5);
-            
-            // 待機位置 0.4m から 衝突位置 0.0m まで
-            const xPos = 0.4 * (1.0 - val);
-            blockL.position.x = -xPos;
-            blockR.position.x = xPos;
-
-            // 衝突時の発光
-            blockL.material.color.set(val > 0.6 ? 0xffffff : 0x00ff00);
-            blockR.material.color.set(val > 0.6 ? 0xffffff : 0x00ff00);
-
-            renderer.render(scene, camera);
+            xrRefSpace = await session.requestReferenceSpace('local');
+            await renderer.xr.setSession(session);
+            renderer.setAnimationLoop((t, frame) => {
+                if (!frame) return;
+                const pose = frame.getViewerPose(xrRefSpace);
+                if (pose) {
+                    const view = pose.views[0];
+                    const m4 = new THREE.Matrix4().fromArray(view.transform.matrix);
+                    const pos = new THREE.Vector3().setFromMatrixPosition(m4);
+                    const quat = new THREE.Quaternion().setFromRotationMatrix(m4);
+                    mainGroup.position.copy(pos).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(quat));
+                    mainGroup.quaternion.copy(quat);
+                }
+                const val = Math.min(1.0, window.mD.low * 1.5);
+                const x = 0.4 * (1.0 - val);
+                blockL.position.x = -x;
+                blockR.position.x = x;
+                renderer.render(scene, camera);
+            });
         }
         document.getElementById('arBtn').onclick = start;
     </script>
