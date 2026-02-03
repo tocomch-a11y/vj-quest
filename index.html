@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V46 - HYPER EVOLUTION</title>
+    <title>PSY-AR V47 - 17 PATTERNS</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START EVOLUTION V46</button>
+    <button id="arBtn">START SESSION V47</button>
     <audio id="audio" autoplay playsinline></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -27,7 +27,6 @@
         let currentIdx = 0, nextSwitch = 0, hue = 0;
         const _v = new THREE.Vector3(), _color = new THREE.Color();
 
-        // V28の安定した通信コード
         const peer = new Peer('quest-receiver');
         peer.on('connection', c => { c.on('data', d => { window.mD = d; }); });
         peer.on('call', call => {
@@ -35,28 +34,62 @@
             call.on('stream', s => { document.getElementById('audio').srcObject = s; });
         });
 
-        function setup() {
-            // V46 新10種：数理的・空間的な重なりを重視した新デザイン
-            const geoms = [
-                new THREE.TorusKnotGeometry(0.5, 0.005, 200, 20, 3, 5), // 0: デジタル・ナーヴ（神経）
-                new THREE.IcosahedronGeometry(0.8, 1),                 // 1: データの胞子
-                new THREE.TorusGeometry(0.7, 0.25, 3, 3),              // 2: デルタ・チューブ
-                new THREE.BoxGeometry(0.01, 3, 0.01),                  // 3: 垂直の光柱（レーザー）
-                new THREE.DodecahedronGeometry(0.6, 0),                // 4: 多面体の核
-                new THREE.TorusGeometry(1.0, 0.002, 8, 100),           // 5: 虚空のリング（極細）
-                new THREE.OctahedronGeometry(0.5, 4),                  // 6: フラクタル・ダイヤモンド
-                new THREE.CylinderGeometry(0.1, 0.4, 0.4, 4),          // 7: 浮遊ピラミッド
-                new THREE.TorusKnotGeometry(0.4, 0.12, 100, 12, 2, 3), // 8: 重なり合う龍
-                new THREE.SphereGeometry(1.5, 12, 12)                  // 9: デジタル・グリッド球体
-            ];
+        // 番号表示用のドット文字データ
+        const numData = [
+            [], // 0 (未使用)
+            [0,1,0,1,1,0,0,1,0,0,1,0,1,1,1], [1,1,1,0,0,1,1,1,1,1,0,0,1,1,1], [1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+            [1,0,1,1,0,1,1,1,1,0,0,1,0,0,1], [1,1,1,1,0,0,1,1,1,0,0,1,1,1,1], [1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],
+            [1,1,1,0,0,1,0,0,1,0,0,1,0,0,1], [1,1,1,1,0,1,1,1,1,1,0,1,1,1,1], [1,1,1,1,0,1,1,1,1,0,0,1,1,1,1],
+            [0,1,0,1,1,1,0,1,0,0,1,0,0,1,0], [0,1,0,1,1,1,0,1,0,0,1,0,1,1,1], [0,1,0,1,1,1,0,1,0,0,1,0,1,1,1],
+            [0,1,0,1,1,1,0,1,0,0,1,0,0,1,1], [0,1,0,1,1,1,0,1,0,1,1,1,0,0,1], [0,1,0,1,1,1,0,1,0,1,0,0,1,1,1],
+            [0,1,0,1,1,1,0,1,0,1,1,1,1,1,1], [0,1,0,1,1,1,0,1,0,0,0,1,0,0,1]
+        ];
 
-            for(let i=0; i<10; i++) {
+        function createIDLabel(id) {
+            const group = new THREE.Group();
+            const data = numData[id] || [];
+            data.forEach((val, i) => {
+                if(val) {
+                    const m = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                    m.position.set((i%3)*0.02, Math.floor(i/3)*-0.02, 0);
+                    group.add(m);
+                }
+            });
+            group.name = "ID_LABEL";
+            group.position.set(0.5, 0.5, 0); // 右上に配置
+            return group;
+        }
+
+        function setup() {
+            for(let i=1; i<=17; i++) {
                 const group = new THREE.Group();
-                let count = (i === 3 || i === 9) ? 50 : 25; // 特定のパターンは密度を上げる
+                group.add(createIDLabel(i));
+                let geo, count = 25, matType = { wireframe: true, transparent: true };
+
+                switch(i) {
+                    case 1: geo = new THREE.TorusKnotGeometry(0.8, 0.2, 100, 16); break;
+                    case 2: geo = new THREE.TorusGeometry(0.5, 0.05, 16, 100); count = 40; break;
+                    case 3: geo = new THREE.CylinderGeometry(0.3, 0.3, 1, 12); break;
+                    case 4: geo = new THREE.BoxGeometry(0.001, 3, 0.001); count = 100; break;
+                    case 5: geo = new THREE.TorusKnotGeometry(0.6, 0.02, 256, 32, 12, 15); break;
+                    case 6: geo = new THREE.TorusGeometry(0.8, 0.2, 12, 32); count = 15; break;
+                    case 7: geo = new THREE.BoxGeometry(0.001, 0.001, 5); count = 100; break;
+                    case 8: geo = new THREE.PlaneGeometry(3, 3, 32, 32); count = 1; break;
+                    case 9: geo = new THREE.IcosahedronGeometry(0.02, 0); count = 150; break;
+                    case 10: geo = new THREE.CylinderGeometry(1.5, 1.5, 0.01, 64); count = 3; break;
+                    case 11: geo = new THREE.TorusKnotGeometry(0.5, 0.15, 100, 16, 2, 3); count = 5; break;
+                    case 12: geo = new THREE.TorusGeometry(0.7, 0.2, 4, 4); count = 10; break;
+                    case 13: geo = new THREE.TorusGeometry(1.5, 0.001, 8, 100); count = 15; break;
+                    case 14: geo = new THREE.TorusKnotGeometry(0.7, 0.3, 40, 8); count = 3; break;
+                    case 15: geo = new THREE.SphereGeometry(1.5, 16, 8); count = 1; break;
+                    case 16: geo = new THREE.TorusGeometry(0.8, 0.3, 4, 4); count = 10; break;
+                    case 17: geo = new THREE.PlaneGeometry(0.01, 4, 1); count = 60; break;
+                }
+
                 for(let j=0; j<count; j++) {
-                    const m = new THREE.Mesh(geoms[i], new THREE.MeshBasicMaterial({ wireframe: true, transparent: true }));
-                    m.position.set((Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5, (Math.random()-0.5)*4.5);
-                    m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+                    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial(matType));
+                    if(i!==8 && i!==15) m.position.set((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5);
+                    if(i===2 || i===6 || i===7) m.userData.zOffset = j * (10/count);
                     group.add(m);
                 }
                 group.visible = false;
@@ -67,26 +100,23 @@
         }
 
         async function start() {
-            document.getElementById('audio').play().catch(() => {});
             try {
-                // V28で成功していた「local-floor」設定
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
                 renderer.xr.enabled = true;
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
-
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
                 mainGroup = new THREE.Group();
                 scene.add(mainGroup);
                 setup();
-
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
-            } catch (e) { alert("AR Error: " + e.message); }
+                document.getElementById('audio').play().catch(()=>{});
+            } catch (e) { alert(e.message); }
         }
 
         function render(time, frame) {
@@ -94,34 +124,42 @@
             const d = window.mD;
             hue += 0.005;
 
-            // 6秒ごとに自動切り替え
             if (Date.now() > nextSwitch) {
                 patterns[currentIdx].visible = false;
-                currentIdx = (currentIdx + 1) % 10;
+                currentIdx = (currentIdx + 1) % 17;
                 patterns[currentIdx].visible = true;
-                nextSwitch = Date.now() + 6000;
+                nextSwitch = Date.now() + 8000;
             }
 
-            // V28の安定した追従ロジック
-            _v.set(0, 0, -1.8).applyQuaternion(camera.quaternion).add(camera.position);
+            _v.set(0, 0, -2).applyQuaternion(camera.quaternion).add(camera.position);
             mainGroup.position.lerp(_v, 0.1);
 
             patterns[currentIdx].children.forEach((p, i) => {
-                // 音への反応
-                p.rotation.y += 0.01 + d.high;
-                p.rotation.z += 0.005 + d.mid;
-                p.scale.setScalar(0.7 + d.low * 2.3);
+                if(p.name === "ID_LABEL") { p.lookAt(camera.position); return; }
 
-                // カラーアニメーション
                 _color.setHSL((hue + i/25)%1, 1, 0.5);
                 p.material.color.copy(_color);
-                p.material.opacity = 0.3 + d.low * 0.7;
-
-                // 3番（レーザー）だけの特殊挙動
-                if(currentIdx === 3) {
-                    p.rotation.x = Math.PI / 2;
-                    p.position.y += Math.sin(time/500 + i) * 0.01;
+                
+                const idx = currentIdx + 1;
+                // 各パターンの固有演出
+                if(idx === 1) { p.scale.setScalar(0.8 + d.low * 0.1); p.rotation.y += 0.01; }
+                if(idx === 2 || idx === 6 || idx === 7) {
+                    p.position.z = ((p.userData.zOffset + time/1000) % 10) - 5;
+                    p.position.x = Math.sin(i) * 2; p.position.y = Math.cos(i) * 2;
                 }
+                if(idx === 5) { p.rotation.y += 0.02 + d.mid; p.scale.setScalar(0.5 + d.low); }
+                if(idx === 8) { 
+                    p.rotation.x = -Math.PI/2; 
+                    p.geometry.verticesNeedUpdate = true; // 頂点アニメーション用（簡易版）
+                    p.scale.z = 1 + d.low * 3;
+                }
+                if(idx === 9) { p.scale.setScalar(0.5 + d.low * 4); }
+                if(idx === 10) { p.rotation.y += 0.01 + d.low; p.rotation.x = Math.PI/2; }
+                if(idx === 17) { p.position.x = ((i * 0.2 + time/2000) % 6) - 3; }
+
+                // 基本の音反応
+                if(idx !== 1) p.scale.setScalar(0.7 + d.low * 2);
+                p.rotation.y += 0.01 + d.high;
             });
             renderer.render(scene, camera);
         }
