@@ -1,25 +1,23 @@
 <!DOCTYPE html>
 <html>
-<body style="background:#111; color:#0f0; text-align:center; padding:50px;">
-    <button id="btn" style="padding:40px;">START SENDER</button>
+<body style="background:#000; color:#0f0; text-align:center;">
+    <button id="btn" style="padding:50px; margin:50px;">CONNECT TO QUEST</button>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         const peer = new Peer('mac-sender-' + Math.floor(Math.random()*999));
         document.getElementById('btn').onclick = async () => {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
-            });
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const ctx = new AudioContext();
-            const analyzer = ctx.createAnalyser();
-            ctx.createMediaStreamSource(stream).connect(analyzer);
-            const data = new Uint8Array(analyzer.frequencyBinCount);
+            const ana = ctx.createAnalyser();
+            ctx.createMediaStreamSource(stream).connect(ana);
+            const d = new Uint8Array(ana.frequencyBinCount);
             
             peer.call('quest-receiver', stream);
             const conn = peer.connect('quest-receiver');
             conn.on('open', () => {
                 setInterval(() => {
-                    analyzer.getByteFrequencyData(data);
-                    conn.send({ low: data[4]/255, mid: data[15]/255, trigger: data[4]>215 });
+                    ana.getByteFrequencyData(d);
+                    conn.send({ low: d[4]/255, mid: d[15]/255, high: d[40]/255, trigger: d[4]>210 });
                 }, 20);
             });
         };
