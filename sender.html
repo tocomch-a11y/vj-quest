@@ -1,46 +1,17 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>SENDER V69</title></head>
+<head><meta charset="UTF-8"><title>SENDER V71</title></head>
 <body style="font-family:sans-serif; padding:20px;">
-    <h2>SENDER V69 (Input Device Capture)</h2>
-    <button id="btn1" style="padding:15px;">1. CONNECT TO QUEST</button>
-    <button id="btn2" style="padding:15px; background:#4CAF50; color:white;">2. START ANALYZE</button>
+    <h2>SENDER V71 (Audio Streamer)</h2>
+    <button id="btn" style="padding:20px; background:#4CAF50; color:white;">START STREAMING</button>
     <div id="status" style="margin-top:20px;">STATUS: IDLE</div>
-    <div id="rmsDisplay" style="font-size:40px; font-family:monospace;">RMS: 0.000</div>
-
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         const peer = new Peer('pc-sender');
-        let conn, audioCtx, analyser, dataArray;
-
-        document.getElementById('btn1').onclick = () => {
-            conn = peer.connect('quest-receiver');
-            conn.on('open', () => { document.getElementById('status').innerText = "CONNECTED"; });
-        };
-
-        document.getElementById('btn2').onclick = async () => {
+        document.getElementById('btn').onclick = async () => {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            audioCtx = new AudioContext();
-            const source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
-            source.connect(analyser);
             peer.call('quest-receiver', stream);
-
-            function loop() {
-                analyser.getByteTimeDomainData(dataArray);
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                    let v = (dataArray[i] - 128) / 128;
-                    sum += v * v;
-                }
-                let rms = Math.sqrt(sum / dataArray.length);
-                document.getElementById('rmsDisplay').innerText = "RMS: " + rms.toFixed(3);
-                if (conn && conn.open) conn.send({ r: rms }); // 容量削減のためキーを 'r' に短縮
-                requestAnimationFrame(loop);
-            }
-            loop();
+            document.getElementById('status').innerText = "STREAMING TO QUEST...";
         };
     </script>
 </body>
