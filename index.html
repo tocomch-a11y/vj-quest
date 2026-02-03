@@ -1,86 +1,66 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>QUEST V68 - SYNC FIX</title>
-    <style>
-        body { margin: 0; background: #000; overflow: hidden; }
-        #arBtn { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px; font-size: 20px; background: #00ff00; z-index: 1000;
-        }
-    </style>
+<head><meta charset="UTF-8"><title>QUEST V69</title>
+<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; }</style>
 </head>
 <body>
-    <button id="arBtn">START VR MODE V68</button>
+    <button id="arBtn">START VR MODE V69</button>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
-
     <script>
-        let scene, camera, renderer, xrRefSpace, blockL, blockR;
-        let audioCtx, delayNode, streamSource;
-        window.mD = { rms: 0 };
+        let scene, camera, renderer, xrRefSpace, blockL, blockR, group;
+        let currentRMS = 0; // グローバルで保持
 
         const peer = new Peer('quest-receiver');
+        peer.on('connection', c => {
+            c.on('data', d => { if(d && d.r !== undefined) currentRMS = d.r; });
+        });
         peer.on('call', call => {
             call.answer(new MediaStream());
-            call.on('stream', s => { 
-                document.getElementById('remoteAudio').srcObject = s;
-                if (audioCtx) initAudio(s);
-            });
+            call.on('stream', s => { document.getElementById('remoteAudio').srcObject = s; });
         });
-        peer.on('connection', c => {
-            c.on('data', d => { if(d) window.mD.rms = d.rms || 0; });
-        });
-
-        function initAudio(s) {
-            if (audioCtx) {
-                streamSource = audioCtx.createMediaStreamSource(s);
-                delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.25; // ズレてたらここを調整
-                streamSource.connect(delayNode);
-                delayNode.connect(audioCtx.destination);
-            }
-        }
 
         async function start() {
-            try {
-                audioCtx = new AudioContext();
-                const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
-                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.xr.enabled = true;
-                document.body.appendChild(renderer.domElement);
-                document.getElementById('arBtn').style.display = 'none';
-                
-                scene = new THREE.Scene();
-                camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                
-                const group = new THREE.Group();
-                blockL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), new THREE.MeshBasicMaterial({color: 0x00ff00}));
-                blockR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), new THREE.MeshBasicMaterial({color: 0x00ff00}));
-                group.add(blockL, blockR);
-                scene.add(group);
+            const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
+            renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            document.getElementById('arBtn').style.display = 'none';
+            
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+            
+            group = new THREE.Group();
+            const geo = new THREE.BoxGeometry(0.08, 0.3, 0.08);
+            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            group.add(blockL, blockR);
+            scene.add(group);
 
-                xrRefSpace = await session.requestReferenceSpace('local');
-                await renderer.xr.setSession(session);
-                renderer.setAnimationLoop((t, frame) => {
-                    if (!frame) return;
-                    // カメラの正面に固定
-                    const head = camera.position;
-                    const q = camera.quaternion;
-                    group.position.copy(head).add(new THREE.Vector3(0, 0, -1).applyQuaternion(q));
-                    group.quaternion.copy(q);
+            xrRefSpace = await session.requestReferenceSpace('local');
+            await renderer.xr.setSession(session);
 
-                    // 動き（RMSが届いていれば動く）
-                    const v = Math.min(1, window.mD.rms * 10);
-                    blockL.position.x = -(0.4 - v * 0.4);
-                    blockR.position.x = (0.4 - v * 0.4);
-                    
-                    renderer.render(scene, camera);
-                });
-            } catch (e) { alert(e); }
+            renderer.setAnimationLoop((t, frame) => {
+                if (!frame) return;
+                const head = camera.position;
+                const q = camera.quaternion;
+                group.position.copy(head).add(new THREE.Vector3(0, 0, -1).applyQuaternion(q));
+                group.quaternion.copy(q);
+
+                // --- ここで確実に currentRMS を反映 ---
+                // 感度を20倍にアップ
+                const s = Math.min(1.0, currentRMS * 20.0);
+                const gap = 0.4 * (1.0 - s);
+                blockL.position.x = -gap;
+                blockR.position.x = gap;
+
+                // 衝突時に白く光る
+                blockL.material.color.set(s > 0.5 ? 0xffffff : 0x00ff00);
+                blockR.material.color.set(s > 0.5 ? 0xffffff : 0x00ff00);
+                
+                renderer.render(scene, camera);
+            });
         }
         document.getElementById('arBtn').onclick = start;
     </script>
