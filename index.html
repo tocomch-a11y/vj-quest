@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>QUEST V71 - DIRECT ANALYZE</title>
-<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; }</style>
+<head><meta charset="UTF-8"><title>QUEST V72</title>
+<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; border-radius: 10px; font-weight: bold; }</style>
 </head>
 <body>
-    <button id="arBtn">START VR MODE V71</button>
-    <audio id="remoteAudio" autoplay playsinline></audio>
+    <button id="arBtn">START VR & AUDIO V72</button>
+    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
@@ -20,28 +20,39 @@
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => {
-                // 音声解析のセットアップ
-                if(!audioCtx) audioCtx = new AudioContext();
-                const source = audioCtx.createMediaStreamSource(s);
-                analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 256;
-                dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
-                // 遅延補正（ビジュアルと合わせるためのディレイ）
-                const delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.25; // ← ズレを感じたらここを調整！
-                
-                source.connect(analyser);
-                analyser.connect(delayNode);
-                delayNode.connect(audioCtx.destination);
-                
-                document.getElementById('remoteAudio').srcObject = s;
-                document.getElementById('remoteAudio').muted = true; // スピーカーからはWebAudio経由で出すので、audioタグは消音
+                console.log("Audio Stream Received");
+                setupAudioAnalysis(s);
             });
         });
 
+        function setupAudioAnalysis(stream) {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // 重要：一度停止させてから再開（Questのブラウザバグ対策）
+            audioCtx.resume();
+
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            const delayNode = audioCtx.createDelay(1.0);
+            delayNode.delayTime.value = 0.25; 
+            
+            source.connect(analyser);
+            analyser.connect(delayNode);
+            delayNode.connect(audioCtx.destination); // これで音が鳴るはず
+
+            const audioEl = document.getElementById('remoteAudio');
+            audioEl.srcObject = stream;
+            audioEl.muted = true; // 二重音防止
+        }
+
         async function start() {
-            if(audioCtx) audioCtx.resume();
+            // AR開始時にAudioContextをアクティブ化
+            if(!audioCtx) audioCtx = new AudioContext();
+            await audioCtx.resume();
+
             const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
             renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
             renderer.xr.enabled = true;
@@ -64,7 +75,7 @@
             renderer.setAnimationLoop((t, frame) => {
                 if (!frame) return;
 
-                // --- VRループ内で直接音量を計算 ---
+                // 音量解析
                 if (analyser) {
                     analyser.getByteTimeDomainData(dataArray);
                     let sum = 0;
@@ -75,7 +86,7 @@
                     currentRMS = Math.sqrt(sum / dataArray.length);
                 }
 
-                const s = Math.min(1.0, currentRMS * 15.0);
+                const s = Math.min(1.0, currentRMS * 20.0);
                 const head = camera.position;
                 const q = camera.quaternion;
                 group.position.copy(head).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(q));
@@ -85,9 +96,10 @@
                 blockL.position.x = -gap;
                 blockR.position.x = gap;
 
-                // 反応チェック用の色変化
-                blockL.material.color.set(s > 0.1 ? 0xffffff : 0x00ff00);
-                blockR.material.color.set(s > 0.1 ? 0xffffff : 0x00ff00);
+                // 反応したら白く光る
+                const color = s > 0.1 ? 0xffffff : 0x00ff00;
+                blockL.material.color.set(color);
+                blockR.material.color.set(color);
 
                 renderer.render(scene, camera);
             });
