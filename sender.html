@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>SENDER V78 - LATENCY TEST</title></head>
+<head><meta charset="UTF-8"><title>SENDER V79 - High Quality</title></head>
 <body style="font-family:sans-serif; padding:20px;">
-    <h2>SENDER V78 (Latency Focus)</h2>
-    <button id="start" style="padding:15px;">1. START AUDIO</button>
+    <h2>SENDER V79 (Max Audio Quality)</h2>
+    <button id="start" style="padding:15px; background:#2196F3; color:white;">1. START AUDIO</button>
     <button id="connect" style="padding:15px;">2. CONNECT TO QUEST</button>
     <div id="debug" style="font-size:24px; font-family:monospace; margin-top:10px;">L: 0.00</div>
 
@@ -13,31 +13,39 @@
         const debug = document.getElementById('debug');
 
         document.getElementById('start').onclick = async () => {
-            // ノイズ抑制などをすべてオフにし、生音を最優先
+            // 最高音質設定: すべての加工を無効化
             audioStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, latency: 0 } 
+                audio: { 
+                    echoCancellation: false, 
+                    noiseSuppression: false, 
+                    autoGainControl: false,
+                    sampleRate: 48000,
+                    channelCount: 1
+                } 
             });
             const ctx = new AudioContext();
             const src = ctx.createMediaStreamSource(audioStream);
             const ana = ctx.createAnalyser();
-            ana.fftSize = 256; // 解析を最速にする
+            ana.fftSize = 512; // 解析精度を少し上げ、動きを滑らかに
+            ana.smoothingTimeConstant = 0.4; // 送信データ自体に少し滑らかさを持たせる
             src.connect(ana);
             const data = new Uint8Array(ana.frequencyBinCount);
 
-            // 通信の「詰まり」によるノイズを防ぐため、送信頻度を少し落としつつ安定化
+            // 16ms(約60fps)で送信。Questの描画周期に合わせる
             setInterval(() => {
                 ana.getByteFrequencyData(data);
                 const low = data.slice(0, 5).reduce((a, b) => a + b) / 600; 
                 debug.innerText = `L: ${low.toFixed(2)}`;
                 if (conn && conn.open) {
-                    conn.send({ l: Number(low.toFixed(2)) }); // 数値を短くして送信
+                    conn.send({ l: Number(low.toFixed(2)) });
                 }
-            }, 20); // 50fps
+            }, 16);
         };
 
         document.getElementById('connect').onclick = () => {
             peer = new Peer('mac-sender-' + Math.floor(Math.random()*1000));
             peer.on('open', () => {
+                // reliable: false (UDPモード) にして遅延を最小化
                 conn = peer.connect('quest-receiver', { serialization: 'json', reliable: false });
                 peer.call('quest-receiver', audioStream);
             });
