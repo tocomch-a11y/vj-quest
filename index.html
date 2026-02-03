@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V58 - FINAL AUDIO FIX</title>
+    <title>PSY-AR V59 - ECHO CANCEL</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
@@ -14,8 +14,8 @@
     </style>
 </head>
 <body>
-    <button id="arBtn">START SESSION V58</button>
-    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
+    <button id="arBtn">START SESSION V59</button>
+    <audio id="remoteAudio" autoplay playsinline muted style="display:none;"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
@@ -39,12 +39,12 @@
             call.on('stream', s => { 
                 console.log("Stream received!");
                 remoteStream = s;
-                // 方法1: Audio要素に直接流す（これが最も確実）
+                // 方法1: Audio要素（ミュート状態で流し、ブラウザのストリームを活性化させる）
                 const audioEl = document.getElementById('remoteAudio');
                 audioEl.srcObject = s;
-                audioEl.play().catch(e => console.log("Audio El Play Error:", e));
+                audioEl.muted = true; // ← ここで二重音を防止
                 
-                // 方法2: WebAudioに接続（遅延補正用）
+                // 方法2: WebAudio（ディレイをかけてこちらから音を出す）
                 if (audioCtx) connectStream(s);
             });
         });
@@ -57,12 +57,14 @@
                 streamSource = audioCtx.createMediaStreamSource(stream);
                 if (!delayNode) {
                     delayNode = audioCtx.createDelay(1.0);
+                    // ビジュアルの反応に音を合わせるための待機時間（秒）
+                    // 0.25秒くらいが標準的ですが、ズレていればここを調整
                     delayNode.delayTime.value = 0.25; 
                     delayNode.connect(audioCtx.destination);
                 }
                 streamSource.connect(delayNode);
-                console.log("WebAudio Connected");
-            } catch(e) { console.error("WebAudio Link Error:", e); }
+                console.log("WebAudio Delayed Path Connected");
+            } catch(e) { console.error("WebAudio Error:", e); }
         }
 
         function setup() {
@@ -105,11 +107,9 @@
 
         async function start() {
             try {
-                // AudioContextの生成
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') await audioCtx.resume();
                 
-                // 強制アンロック用のダミー音
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
                 gain.gain.value = 0.001;
@@ -132,11 +132,7 @@
                 await renderer.xr.setSession(session);
                 renderer.setAnimationLoop(render);
 
-                // 定期的にオーディオを監視
-                setInterval(() => {
-                    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-                }, 1000);
-
+                setInterval(() => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, 1000);
             } catch (e) { alert("Error: " + e.message); }
         }
 
