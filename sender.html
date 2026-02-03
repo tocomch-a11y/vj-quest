@@ -1,52 +1,84 @@
 <!DOCTYPE html>
-<html>
-<body style="background:#111; color:white; font-family:sans-serif; text-align:center; padding:50px;">
-    <h1>MAC SENDER</h1>
-    <button id="btn" style="padding:25px; font-size:20px; cursor:pointer; background:#00ff00;">1. START & CONNECT</button>
-    <p id="status">Status: Waiting for click</p>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mac Audio Controller</title>
+    <style>
+        body { background: #111; color: #0f0; font-family: monospace; text-align: center; padding: 50px; }
+        #btn { 
+            padding: 30px 60px; font-size: 24px; cursor: pointer; 
+            background: #00ff00; border: none; border-radius: 10px; font-weight: bold;
+        }
+        #status { margin-top: 20px; font-size: 18px; color: #00ffff; }
+    </style>
+</head>
+<body>
+    <h1>MAC AUDIO SENDER</h1>
+    <button id="btn">START ANALYSIS & SEND</button>
+    <div id="status">Status: Standby</div>
 
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
-        const peer = new Peer('mac-sender-' + Math.floor(Math.random()*1000)); // Unique ID for Mac
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
+        
+        // Use a random ID for Mac, it will connect to the Quest's 'quest-receiver'
+        const peer = new Peer('mac-sender-' + Math.floor(Math.random() * 999));
         let dataConn;
 
-        document.getElementById('btn').onclick = async () => {
-            document.getElementById('status').innerText = "Accessing Microphone...";
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            const ctx = new AudioContext();
-            const source = ctx.createMediaStreamSource(stream);
-            const analyzer = ctx.createAnalyser();
-            analyzer.fftSize = 256;
-            source.connect(analyzer);
-            const data = new Uint8Array(analyzer.frequencyBinCount);
+        btn.onclick = async () => {
+            try {
+                status.innerText = "Requesting Microphone...";
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Audio Setup
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyzer = audioCtx.createAnalyser();
+                analyzer.fftSize = 256;
+                source.connect(analyzer);
+                const dataArray = new Uint8Array(analyzer.frequencyBinCount);
 
-            document.getElementById('status').innerText = "Connecting to Quest...";
-            
-            // Call and Data connection to specific Quest ID
-            peer.call('quest-receiver', stream);
-            dataConn = peer.connect('quest-receiver');
+                status.innerText = "Connecting to Quest...";
 
-            dataConn.on('open', () => {
-                document.getElementById('status').innerText = "!!! CONNECTED TO QUEST !!!";
-                function loop() {
-                    analyzer.getByteFrequencyData(data);
-                    if (dataConn.open) {
-                        dataConn.send({
-                            low: data[4]/255,
-                            mid: data[15]/255,
-                            high: data[30]/255,
-                            trigger: data[4] > 200
-                        });
+                // Send Audio Stream
+                peer.call('quest-receiver', stream);
+
+                // Send Data Connection
+                dataConn = peer.connect('quest-receiver');
+
+                dataConn.on('open', () => {
+                    status.innerText = "LINK ACTIVE: STREAMING DATA";
+                    
+                    function loop() {
+                        analyzer.getByteFrequencyData(dataArray);
+                        
+                        // Simple frequency mapping
+                        const low = dataArray[4] / 255;    // Bass
+                        const mid = dataArray[15] / 255;   // Mid
+                        const high = dataArray[40] / 255;  // Highs
+
+                        if (dataConn.open) {
+                            dataConn.send({
+                                low: low,
+                                mid: mid,
+                                high: high,
+                                trigger: low > 0.82 // Bass kick trigger
+                            });
+                        }
+                        requestAnimationFrame(loop);
                     }
-                    requestAnimationFrame(loop);
-                }
-                loop();
-            });
+                    loop();
+                });
 
-            dataConn.on('error', (err) => {
-                document.getElementById('status').innerText = "Connection Error: " + err;
-            });
+                dataConn.on('close', () => {
+                    status.innerText = "Connection Closed. Reconnecting...";
+                });
+
+            } catch (err) {
+                status.innerText = "Error: " + err.message;
+                console.error(err);
+            }
         };
     </script>
 </body>
