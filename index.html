@@ -2,128 +2,85 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PSY-AR V66 - DEBUG MODE</title>
+    <title>QUEST V68 - SYNC FIX</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
         #arBtn { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); 
-            padding: 30px; font-size: 20px; font-weight: bold; background: #00ff00; border: none; z-index: 1000;
-        }
-        #debugInfo {
-            position: fixed; top: 10px; left: 10px; color: #0f0; 
-            background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; z-index: 1001;
+            padding: 30px; font-size: 20px; background: #00ff00; z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <button id="arBtn">START DEBUG V66</button>
-    <div id="debugInfo">
-        RMS DATA: <span id="rmsVal">0.000</span><br>
-        LATENCY: <span id="latVal">0.25</span>s
-    </div>
+    <button id="arBtn">START VR MODE V68</button>
     <audio id="remoteAudio" autoplay playsinline muted></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
 
     <script>
-        let scene, camera, renderer, xrRefSpace, group, blockL, blockR;
-        let audioCtx, delayNode, streamSource, remoteStream = null;
-        
-        let currentDelay = 0.25; // ここを調整
+        let scene, camera, renderer, xrRefSpace, blockL, blockR;
+        let audioCtx, delayNode, streamSource;
         window.mD = { rms: 0 };
 
         const peer = new Peer('quest-receiver');
-        peer.on('connection', c => {
-            console.log("Connected!");
-            c.on('data', d => { 
-                if(d && d.rms !== undefined) {
-                    window.mD.rms = d.rms;
-                    // 数値を画面に表示
-                    document.getElementById('rmsVal').innerText = d.rms.toFixed(3);
-                }
-            });
-        });
-
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => { 
-                remoteStream = s;
                 document.getElementById('remoteAudio').srcObject = s;
-                if (audioCtx) connectStream(s);
+                if (audioCtx) initAudio(s);
             });
         });
+        peer.on('connection', c => {
+            c.on('data', d => { if(d) window.mD.rms = d.rms || 0; });
+        });
 
-        function connectStream(stream) {
-            if (streamSource) streamSource.disconnect();
-            audioCtx.resume();
-            streamSource = audioCtx.createMediaStreamSource(stream);
-            if (!delayNode) {
+        function initAudio(s) {
+            if (audioCtx) {
+                streamSource = audioCtx.createMediaStreamSource(s);
                 delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = currentDelay;
+                delayNode.delayTime.value = 0.25; // ズレてたらここを調整
+                streamSource.connect(delayNode);
                 delayNode.connect(audioCtx.destination);
             }
-            streamSource.connect(delayNode);
-        }
-
-        function setup() {
-            group = new THREE.Group();
-            scene.add(group);
-            const geo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
-            blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            blockR = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            group.add(blockL); group.add(blockR);
-            group.add(new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.6, 0.01), new THREE.MeshBasicMaterial({color: 0xffffff})));
         }
 
         async function start() {
-            document.getElementById('latVal').innerText = currentDelay;
             try {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtx = new AudioContext();
                 const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
                 renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
                 document.getElementById('arBtn').style.display = 'none';
+                
                 scene = new THREE.Scene();
                 camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-                setup();
-                if (remoteStream) connectStream(remoteStream);
+                
+                const group = new THREE.Group();
+                blockL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), new THREE.MeshBasicMaterial({color: 0x00ff00}));
+                blockR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), new THREE.MeshBasicMaterial({color: 0x00ff00}));
+                group.add(blockL, blockR);
+                scene.add(group);
+
                 xrRefSpace = await session.requestReferenceSpace('local');
                 await renderer.xr.setSession(session);
-                renderer.setAnimationLoop(render);
-            } catch (e) { alert(e.message); }
-        }
+                renderer.setAnimationLoop((t, frame) => {
+                    if (!frame) return;
+                    // カメラの正面に固定
+                    const head = camera.position;
+                    const q = camera.quaternion;
+                    group.position.copy(head).add(new THREE.Vector3(0, 0, -1).applyQuaternion(q));
+                    group.quaternion.copy(q);
 
-        function render(time, frame) {
-            if (!xrRefSpace || !frame) return;
-            
-            const headPos = new THREE.Vector3();
-            const headQuat = new THREE.Quaternion();
-            camera.getWorldPosition(headPos);
-            camera.getWorldQuaternion(headQuat);
-            group.position.copy(headPos).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(headQuat));
-            group.quaternion.copy(headQuat);
-
-            // --- 強制反応ロジック ---
-            // わずかでも音が届いていれば、その大きさを15倍にして反応させる
-            let rawVol = window.mD.rms;
-            let moveAmount = Math.min(0.5, rawVol * 15.0); 
-
-            // 緑のブロックを動かす（0.5が待機位置、0が衝突）
-            blockL.position.x = -(0.5 - moveAmount);
-            blockR.position.x = (0.5 - moveAmount);
-
-            // 0.05以上のRMSがあれば白く光らせる
-            if (rawVol > 0.05) {
-                blockL.material.color.set(0xffffff);
-                blockR.material.color.set(0xffffff);
-            } else {
-                blockL.material.color.set(0x00ff00);
-                blockR.material.color.set(0x00ff00);
-            }
-
-            renderer.render(scene, camera);
+                    // 動き（RMSが届いていれば動く）
+                    const v = Math.min(1, window.mD.rms * 10);
+                    blockL.position.x = -(0.4 - v * 0.4);
+                    blockR.position.x = (0.4 - v * 0.4);
+                    
+                    renderer.render(scene, camera);
+                });
+            } catch (e) { alert(e); }
         }
         document.getElementById('arBtn').onclick = start;
     </script>
