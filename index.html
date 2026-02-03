@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>QUEST V72</title>
-<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; border-radius: 10px; font-weight: bold; }</style>
+<head><meta charset="UTF-8"><title>QUEST V73 - AUDIO FORCE</title>
+<style>body { margin: 0; background: #000; overflow: hidden; } #arBtn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 30px; font-size: 20px; z-index: 1000; background: #00ff00; }</style>
 </head>
 <body>
-    <button id="arBtn">START VR & AUDIO V72</button>
-    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
+    <button id="arBtn">START VR & AUDIO V73</button>
+    <audio id="remoteAudio" controls autoplay playsinline style="position:fixed; top:10px; left:10px; z-index:1001; background:white;"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
@@ -14,23 +14,24 @@
         let scene, camera, renderer, xrRefSpace, blockL, blockR, group;
         let audioCtx, analyser, dataArray;
         let currentRMS = 0;
+        let remoteStream = null;
 
         const peer = new Peer('quest-receiver');
-
         peer.on('call', call => {
             call.answer(new MediaStream());
             call.on('stream', s => {
-                console.log("Audio Stream Received");
-                setupAudioAnalysis(s);
+                remoteStream = s;
+                const audioEl = document.getElementById('remoteAudio');
+                audioEl.srcObject = s;
+                // ブラウザによるブロック解除を試みる
+                audioEl.play().catch(e => console.log("Auto-play blocked, waiting for user click"));
+                if(audioCtx) setupAnalysis(s);
             });
         });
 
-        function setupAudioAnalysis(stream) {
-            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // 重要：一度停止させてから再開（Questのブラウザバグ対策）
+        function setupAnalysis(stream) {
+            if(!audioCtx) audioCtx = new AudioContext();
             audioCtx.resume();
-
             const source = audioCtx.createMediaStreamSource(stream);
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
@@ -41,17 +42,15 @@
             
             source.connect(analyser);
             analyser.connect(delayNode);
-            delayNode.connect(audioCtx.destination); // これで音が鳴るはず
-
-            const audioEl = document.getElementById('remoteAudio');
-            audioEl.srcObject = stream;
-            audioEl.muted = true; // 二重音防止
+            delayNode.connect(audioCtx.destination);
         }
 
         async function start() {
-            // AR開始時にAudioContextをアクティブ化
-            if(!audioCtx) audioCtx = new AudioContext();
+            // ここでAudioContextを生成してユーザー操作と紐付ける（最重要）
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             await audioCtx.resume();
+            
+            if(remoteStream) setupAnalysis(remoteStream);
 
             const session = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['local-floor'] });
             renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
@@ -61,7 +60,6 @@
             
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-            
             group = new THREE.Group();
             const geo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
             blockL = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
@@ -74,8 +72,6 @@
 
             renderer.setAnimationLoop((t, frame) => {
                 if (!frame) return;
-
-                // 音量解析
                 if (analyser) {
                     analyser.getByteTimeDomainData(dataArray);
                     let sum = 0;
@@ -85,22 +81,16 @@
                     }
                     currentRMS = Math.sqrt(sum / dataArray.length);
                 }
-
-                const s = Math.min(1.0, currentRMS * 20.0);
+                const s = Math.min(1.0, currentRMS * 25.0);
                 const head = camera.position;
                 const q = camera.quaternion;
                 group.position.copy(head).add(new THREE.Vector3(0, 0, -1.2).applyQuaternion(q));
                 group.quaternion.copy(q);
-
                 const gap = 0.5 * (1.0 - s);
                 blockL.position.x = -gap;
                 blockR.position.x = gap;
-
-                // 反応したら白く光る
-                const color = s > 0.1 ? 0xffffff : 0x00ff00;
-                blockL.material.color.set(color);
-                blockR.material.color.set(color);
-
+                blockL.material.color.set(s > 0.05 ? 0xffffff : 0x00ff00);
+                blockR.material.color.set(s > 0.05 ? 0xffffff : 0x00ff00);
                 renderer.render(scene, camera);
             });
         }
