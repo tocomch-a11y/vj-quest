@@ -1,34 +1,22 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>SENDER V72</title></head>
+<head><meta charset="UTF-8"><title>SENDER V73</title></head>
 <body style="font-family:sans-serif; padding:20px;">
-    <h2>SENDER V72</h2>
+    <h2>SENDER V73</h2>
     <button id="btn1" style="padding:15px;">1. CONNECT TO QUEST</button>
-    <br><br>
     <button id="btn2" style="padding:15px; background:#4CAF50; color:white;">2. START AUDIO STREAM</button>
     <div id="status" style="margin-top:20px; font-weight:bold;">STATUS: IDLE</div>
     <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
     <script>
         const peer = new Peer('pc-sender');
-        let connection;
-        
-        // 1. 接続
         document.getElementById('btn1').onclick = () => {
-            connection = peer.connect('quest-receiver');
-            connection.on('open', () => {
-                document.getElementById('status').innerText = "STATUS: CONNECTED (Ready for Audio)";
-            });
+            const conn = peer.connect('quest-receiver');
+            conn.on('open', () => { document.getElementById('status').innerText = "STATUS: CONNECTED"; });
         };
-
-        // 2. 音声ストリーム開始
         document.getElementById('btn2').onclick = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                peer.call('quest-receiver', stream);
-                document.getElementById('status').innerText = "STATUS: STREAMING AUDIO...";
-            } catch (e) {
-                alert("Mic/Cable Error: " + e);
-            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            peer.call('quest-receiver', stream);
+            document.getElementById('status').innerText = "STATUS: STREAMING...";
         };
     </script>
 </body>
